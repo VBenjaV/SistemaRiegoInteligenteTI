@@ -25,14 +25,20 @@ async def lifespan(app: FastAPI):
     init_db()
     logger.info("Base de datos inicializada")
     
-    await init_mqtt()
-    logger.info("MQTT inicializado")
+    try:
+        await init_mqtt()
+        logger.info("MQTT inicializado correctamente")
+    except Exception as e:
+        logger.warning(f"MQTT no disponible: {e}. La aplicación funcionará sin MQTT.")
     
     yield
     
     # Shutdown
     logger.info("Cerrando aplicación...")
-    await close_mqtt()
+    try:
+        await close_mqtt()
+    except:
+        pass
     logger.info("MQTT cerrado")
 
 

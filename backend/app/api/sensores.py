@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, Query, HTTPException, status
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
 from app.db.database import get_db
-from app.models import LecturaSensor, LecturaSensorCreate, LecturaSensorHistorial
+from app.models import LecturaSensor, LecturaSensorCreate
 from app.services.database_service import SensorService
 
 router = APIRouter(prefix="/api/sensores", tags=["Sensores"])
@@ -43,7 +43,7 @@ async def obtener_lectura_actual(
 
 @router.get(
     "/historial",
-    response_model=LecturaSensorHistorial,
+    response_model=dict,
     summary="Obtener historial de lecturas",
     description="Retorna historial de lecturas con filtros opcionales"
 )
@@ -66,12 +66,12 @@ async def obtener_historial(
         db, dispositivo_id, limit, offset, inicio, fin
     )
     
-    return LecturaSensorHistorial(
-        total=total,
-        lecturas=lecturas,
-        inicio=inicio,
-        fin=fin
-    )
+    return {
+        "total": total,
+        "lecturas": lecturas,
+        "inicio": inicio,
+        "fin": fin
+    }
 
 
 @router.get(
