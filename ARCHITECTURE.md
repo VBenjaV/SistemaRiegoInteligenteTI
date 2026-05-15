@@ -101,13 +101,23 @@ GET    /docs                          → Swagger UI (autogenerado)
 
 ### 4. Capa de Persistencia - Base de Datos
 
-**Tecnología:** SQLite (desarrollo) / PostgreSQL (producción)
+**Tecnología:** Supabase (PostgreSQL)
 
 **Tablas Principales:**
 
-#### sensores
+#### ciudades
 ```sql
-id, dispositivo_id, humedad, temperatura, timestamp, creado
+id, nombre, codigo_pais
+```
+
+#### dispositivos
+```sql
+id, nombre, ciudad_id, ubicacion_detallada, activo
+```
+
+#### lecturas_sensores
+```sql
+id, dispositivo_id, humedad, temperatura, fecha_lectura, creado
 ```
 
 #### eventos_riego
@@ -117,13 +127,13 @@ id, dispositivo_id, accion (ON/OFF), duracion_segundos, manual, timestamp
 
 #### configuracion
 ```sql
-id, dispositivo_id, umbral_humedad, intervalo_lectura_min, 
-lluvia_minima_mm, horas_pronostico, actualizado
+dispositivo_id, umbral_humedad, intervalo_lectura_min,
+lluvia_minima_mm, horas_pronostico, actualizado, creado
 ```
 
 #### pronostico_clima
 ```sql
-id, ciudad, fecha, lluvia_esperada_mm, temperatura_max, 
+id, ciudad_id, fecha_pronostico, lluvia_esperada_mm, temperatura_max,
 humedad_relativa, actualizado
 ```
 
@@ -225,7 +235,7 @@ CADA 1 HORA:
 | Device | ESP32 + MicroPython | Bajo costo, Wi-Fi integrado, comunidad |
 | Comunicación | MQTT | Protocolo IoT estándar, bajo overhead |
 | Backend | FastAPI + Python | Desarrollo rápido, documentación automática |
-| BD | SQLite/PostgreSQL | Relacional, fiable, escalable |
+| BD | Supabase (PostgreSQL) | Relacional, fiable, escalable |
 | Frontend | Vue.js | Reactivo, ecosistema robusto |
 | Clima | OpenWeatherMap API | Gratuita, confiable, completa |
 
@@ -234,12 +244,12 @@ CADA 1 HORA:
 ### Desarrollo
 - Backend: `uvicorn main:app --reload`
 - MQTT: Mosquitto en localhost:1883
-- BD: SQLite en disco local
+- BD: Supabase Postgres (nube)
 
 ### Producción
 - Backend: Gunicorn + Nginx en servidor
 - MQTT: HiveMQ Cloud o AWS IoT Core
-- BD: PostgreSQL en RDS/VPS
+- BD: Supabase Postgres
 - Frontend: Vercel / Netlify
 
 ## Próximas Fases

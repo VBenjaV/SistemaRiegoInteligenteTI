@@ -23,6 +23,7 @@ class LecturaSensorBase(BaseModel):
 class LecturaSensorCreate(LecturaSensorBase):
     """Esquema para crear una lectura"""
     temperatura: Optional[float] = Field(None, description="Temperatura en °C")
+    timestamp: Optional[datetime] = Field(None, description="Timestamp de lectura (UTC)")
 
 
 class LecturaSensor(LecturaSensorBase):
@@ -58,6 +59,7 @@ class EventoRiegoBase(BaseModel):
 class EventoRiegoCreate(EventoRiegoBase):
     """Esquema para crear evento"""
     dispositivo_id: str = Field(default="sensor1")
+    timestamp: Optional[datetime] = Field(None, description="Timestamp del evento (UTC)")
 
 
 class EventoRiego(EventoRiegoBase):

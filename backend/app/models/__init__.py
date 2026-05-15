@@ -2,6 +2,7 @@
 from .schemas import (
     LecturaSensor,
     LecturaSensorCreate,
+    LecturaSensorHistorial,
     EventoRiego,
     EventoRiegoCreate,
     Configuracion,
@@ -22,6 +23,7 @@ from .schemas import (
 __all__ = [
     "LecturaSensor",
     "LecturaSensorCreate",
+    "LecturaSensorHistorial",
     "EventoRiego",
     "EventoRiegoCreate",
     "Configuracion",

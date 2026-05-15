@@ -10,7 +10,9 @@ class Settings(BaseSettings):
     api_description: str = "API para control automático de riego basado en IoT"
 
     # Database
-    database_url: str = "sqlite:///./riego.db"
+    supabase_db_url: Optional[str] = None
+    supabase_url: Optional[str] = None
+    supabase_key: Optional[str] = None
 
     # MQTT
     mqtt_broker_host: str = "localhost"
@@ -42,6 +44,12 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+
+    @property
+    def sqlalchemy_database_url(self) -> str:
+        if not self.supabase_db_url:
+            raise ValueError("SUPABASE_DB_URL no configurada")
+        return self.supabase_db_url
 
 
 # Instancia global de configuración

@@ -18,8 +18,10 @@ cd c:\Users\benja\Desktop\InfraTIGrupo2\SistemaRiegoInteligenteTI
 # Copiar archivo de ejemplo
 cp backend\.env.example backend\.env
 
-# Editar backend\.env y agregar tu API key de OpenWeatherMap
-# WEATHER_API_KEY=tu_clave_aqui
+# Editar backend\.env y agregar:
+# - SUPABASE_DB_URL (connection string de Supabase)
+# - WEATHER_API_KEY (OpenWeatherMap)
+# Crear schema en Supabase SQL Editor con docs/supabase_schema.sql
 ```
 
 3. **Levantar servicios**
@@ -83,7 +85,9 @@ pip install -r requirements.txt
 # Copiar archivo de ejemplo
 copy .env.example .env
 
-# Editar .env y agregar API key
+# Editar .env y agregar:
+# - SUPABASE_DB_URL (connection string de Supabase)
+# - WEATHER_API_KEY (OpenWeatherMap)
 ```
 
 5. **Iniciar Mosquitto MQTT**
@@ -116,6 +120,11 @@ python -m uvicorn main:app --reload
 curl -X POST "http://localhost:8000/api/sensores/" \
   -H "Content-Type: application/json" \
   -d '{"humedad": 65.5, "dispositivo_id": "sensor1", "temperatura": 28.0}'
+```
+
+O usar simulador:
+```bash
+python backend/sensor_simulator.py --count 5 --interval 2
 ```
 
 ### 2. Ver dashboard
@@ -223,9 +232,8 @@ netstat -ano | findstr :1883
 
 ### Error de base de datos
 ```bash
-# Borrar la BD y volver a crear
-rm backend/riego.db
-# Reiniciar backend
+# Verificar SUPABASE_DB_URL en backend/.env
+# Revisar logs del backend
 ```
 
 ---

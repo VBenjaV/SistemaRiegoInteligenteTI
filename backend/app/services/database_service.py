@@ -1,5 +1,5 @@
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from sqlalchemy.orm import Session
 from app.db.database import (
@@ -27,7 +27,7 @@ class SensorService:
             dispositivo_id=lectura.dispositivo_id,
             humedad=lectura.humedad,
             temperatura=lectura.temperatura,
-            timestamp=datetime.utcnow()
+            timestamp=lectura.timestamp or datetime.now(timezone.utc)
         )
         db.add(db_lectura)
         db.commit()
@@ -77,7 +77,7 @@ class SensorService:
         """Obtener promedio de humedad en los últimos N minutos"""
         from datetime import timedelta
         
-        tiempo_limite = datetime.utcnow() - timedelta(minutes=minutos)
+        tiempo_limite = datetime.now(timezone.utc) - timedelta(minutes=minutos)
         from sqlalchemy import func
         
         resultado = db.query(func.avg(LecturaSensorDB.humedad)).filter(
@@ -99,7 +99,7 @@ class RiegoService:
             accion=evento.accion.value,
             duracion_segundos=evento.duracion_segundos,
             manual=evento.manual,
-            timestamp=datetime.utcnow()
+            timestamp=evento.timestamp or datetime.now(timezone.utc)
         )
         db.add(db_evento)
         db.commit()
@@ -145,9 +145,9 @@ class RiegoService:
         """Obtener tiempo total de riego hoy en segundos"""
         from datetime import timedelta
         
-        hoy = datetime.utcnow().date()
-        inicio_hoy = datetime.combine(hoy, datetime.min.time())
-        fin_hoy = datetime.combine(hoy, datetime.max.time())
+        hoy = datetime.now(timezone.utc).date()
+        inicio_hoy = datetime.combine(hoy, datetime.min.time(), tzinfo=timezone.utc)
+        fin_hoy = datetime.combine(hoy, datetime.max.time(), tzinfo=timezone.utc)
         
         from sqlalchemy import func
         
@@ -186,7 +186,7 @@ class ConfiguracionService:
         """Actualizar umbral de humedad"""
         config = ConfiguracionService.obtener_configuracion(db, dispositivo_id)
         config.umbral_humedad = umbral
-        config.actualizado = datetime.utcnow()
+        config.actualizado = datetime.now(timezone.utc)
         db.commit()
         db.refresh(config)
         logger.info(f"Umbral actualizado para {dispositivo_id}: {umbral}%")
@@ -197,7 +197,7 @@ class ConfiguracionService:
         """Actualizar intervalo de lectura"""
         config = ConfiguracionService.obtener_configuracion(db, dispositivo_id)
         config.intervalo_lectura_min = intervalo
-        config.actualizado = datetime.utcnow()
+        config.actualizado = datetime.now(timezone.utc)
         db.commit()
         db.refresh(config)
         logger.info(f"Intervalo actualizado para {dispositivo_id}: {intervalo} min")
@@ -219,13 +219,17 @@ class ClimaService:
         descripcion: Optional[str] = None,
     ) -> PronosticoClimaDB:
         """Guardar o actualizar pronóstico"""
+        fecha_base = fecha
+        if fecha_base.tzinfo is None:
+            fecha_base = fecha_base.replace(tzinfo=timezone.utc)
+
+        inicio_dia = fecha_base.replace(hour=0, minute=0, second=0, microsecond=0)
+        fin_dia = fecha_base.replace(hour=23, minute=59, second=59, microsecond=999999)
+
         # Verificar si ya existe
         pronostico = db.query(PronosticoClimaDB).filter(
             PronosticoClimaDB.ciudad == ciudad,
-            PronosticoClimaDB.fecha.between(
-                fecha.replace(hour=0, minute=0, second=0),
-                fecha.replace(hour=23, minute=59, second=59)
-            )
+            PronosticoClimaDB.fecha.between(inicio_dia, fin_dia)
         ).first()
         
         if pronostico:
@@ -235,12 +239,12 @@ class ClimaService:
             pronostico.temperatura_min = temp_min
             pronostico.humedad_relativa = humedad
             pronostico.descripcion = descripcion
-            pronostico.actualizado = datetime.utcnow()
+            pronostico.actualizado = datetime.now(timezone.utc)
         else:
             # Crear nuevo
             pronostico = PronosticoClimaDB(
                 ciudad=ciudad,
-                fecha=fecha,
+                fecha=fecha_base,
                 lluvia_esperada_mm=lluvia_mm,
                 temperatura_max=temp_max,
                 temperatura_min=temp_min,
@@ -256,9 +260,9 @@ class ClimaService:
     @staticmethod
     def obtener_pronostico_hoy(db: Session, ciudad: str) -> list[PronosticoClimaDB]:
         """Obtener pronóstico para hoy"""
-        hoy = datetime.utcnow().date()
-        inicio_hoy = datetime.combine(hoy, datetime.min.time())
-        fin_hoy = datetime.combine(hoy, datetime.max.time())
+        hoy = datetime.now(timezone.utc).date()
+        inicio_hoy = datetime.combine(hoy, datetime.min.time(), tzinfo=timezone.utc)
+        fin_hoy = datetime.combine(hoy, datetime.max.time(), tzinfo=timezone.utc)
         
         return db.query(PronosticoClimaDB).filter(
             PronosticoClimaDB.ciudad == ciudad,
@@ -272,7 +276,7 @@ class ClimaService:
         from datetime import timedelta
         from sqlalchemy import func
         
-        ahora = datetime.utcnow()
+        ahora = datetime.now(timezone.utc)
         limite = ahora + timedelta(hours=horas)
         
         resultado = db.query(func.sum(PronosticoClimaDB.lluvia_esperada_mm)).filter(

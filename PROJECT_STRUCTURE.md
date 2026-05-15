@@ -16,6 +16,7 @@ SistemaRiegoInteligenteTI/
 │   ├── 📄 .env.example            # Variables de entorno (ejemplo)
 │   ├── 📄 main.py                 # Punto de entrada de la aplicación
 │   ├── 📄 client_example.py       # Cliente Python para pruebas
+│   ├── 📄 sensor_simulator.py     # Simulador de sensor (API)
 │   ├── 📄 Dockerfile             # Contenedor Docker
 │   │
 │   ├── app/                        # Paquete principal
@@ -121,7 +122,7 @@ ESP32 → MQTT Broker → Backend FastAPI
                           ↓
                     Lógica de Riego Inteligente
                           ↓
-                    Base de Datos SQLite
+                    Base de Datos Supabase (PostgreSQL)
                           ↓
                     API REST → Frontend (próximamente)
 ```
@@ -143,7 +144,7 @@ python-dotenv==1.0.0      # Gestión de variables de entorno
 1. docker-compose up
    │
    ├─→ Mosquitto inicia en puerto 1883
-   ├─→ PostgreSQL/SQLite se inicializa
+   ├─→ Supabase Postgres se inicializa
    └─→ Backend FastAPI inicia en puerto 8000
        │
        ├─→ init_db() crea tablas
@@ -185,13 +186,27 @@ python-dotenv==1.0.0      # Gestión de variables de entorno
 ### Tablas
 
 ```sql
+CREATE TABLE ciudades (
+   id INT PRIMARY KEY,
+   nombre VARCHAR(100),
+   codigo_pais VARCHAR(5)
+);
+
+CREATE TABLE dispositivos (
+   id VARCHAR(50) PRIMARY KEY,
+   nombre VARCHAR(100),
+   ciudad_id INT,
+   ubicacion_detallada VARCHAR(200),
+   activo BOOLEAN
+);
+
 CREATE TABLE lecturas_sensores (
-    id INT PRIMARY KEY,
-    dispositivo_id VARCHAR(50),
-    humedad FLOAT,
-    temperatura FLOAT,
-    timestamp DATETIME,
-    creado DATETIME
+   id BIGINT PRIMARY KEY,
+   dispositivo_id VARCHAR(50),
+   humedad FLOAT,
+   temperatura FLOAT,
+   fecha_lectura DATETIME,
+   creado DATETIME
 );
 
 CREATE TABLE eventos_riego (
@@ -205,26 +220,25 @@ CREATE TABLE eventos_riego (
 );
 
 CREATE TABLE configuracion (
-    id INT PRIMARY KEY,
-    dispositivo_id VARCHAR(50) UNIQUE,
-    umbral_humedad INT,
-    intervalo_lectura_min INT,
-    lluvia_minima_mm FLOAT,
-    horas_pronostico INT,
-    actualizado DATETIME,
-    creado DATETIME
+   dispositivo_id VARCHAR(50) PRIMARY KEY,
+   umbral_humedad INT,
+   intervalo_lectura_min INT,
+   lluvia_minima_mm FLOAT,
+   horas_pronostico INT,
+   actualizado DATETIME,
+   creado DATETIME
 );
 
 CREATE TABLE pronostico_clima (
-    id INT PRIMARY KEY,
-    ciudad VARCHAR(100),
-    fecha DATETIME,
-    lluvia_esperada_mm FLOAT,
-    temperatura_max FLOAT,
-    temperatura_min FLOAT,
-    humedad_relativa INT,
-    descripcion VARCHAR(200),
-    actualizado DATETIME
+   id INT PRIMARY KEY,
+   ciudad_id INT,
+   fecha_pronostico DATETIME,
+   lluvia_esperada_mm FLOAT,
+   temperatura_max FLOAT,
+   temperatura_min FLOAT,
+   humedad_relativa INT,
+   descripcion VARCHAR(200),
+   actualizado DATETIME
 );
 ```
 
@@ -233,7 +247,7 @@ CREATE TABLE pronostico_clima (
 ### `.env`
 ```
 DEBUG=True
-DATABASE_URL=sqlite:///./riego.db
+SUPABASE_DB_URL=postgresql+psycopg2://user:pass@host:5432/dbname
 MQTT_BROKER_HOST=localhost
 WEATHER_API_KEY=your_key
 ```
@@ -273,13 +287,13 @@ paho-mqtt==1.6.1
 - 1 dispositivo por instalación
 - 1 broker MQTT
 - 1 backend FastAPI
-- SQLite local
+- Supabase Postgres (nube)
 
 **Futuro (Multi Device):**
 - N dispositivos con IDs únicos
 - Broker MQTT escalable (HiveMQ Cloud)
 - Backend en Kubernetes
-- PostgreSQL en RDS
+- Supabase Postgres (nube)
 - Caché con Redis
 
 ## 🔄 Ciclo de Desarrollo
@@ -309,8 +323,8 @@ paho-mqtt==1.6.1
 
 ## 💾 Almacenamiento de Datos
 
-- **Desarrollo**: SQLite en `riego.db`
-- **Producción**: PostgreSQL en servidor
+- **Desarrollo**: Supabase Postgres (nube)
+- **Producción**: Supabase Postgres (nube)
 - **Caché**: Redis (próximo)
 - **Archivos**: Ninguno (todo en BD)
 

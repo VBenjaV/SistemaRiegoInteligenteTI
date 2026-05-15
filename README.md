@@ -5,7 +5,7 @@ Diseño e implementación completa de un sistema de automatización de riego bas
 - **Backend**: FastAPI + Python
 - **Dispositivo Edge**: ESP32 con MQTT
 - **Comunicación**: MQTT Broker (Mosquitto)
-- **Base de Datos**: SQLite/PostgreSQL
+- **Base de Datos**: Supabase (PostgreSQL)
 - **Frontend**: Vue.js (próximamente)
 - **Integración Meteorológica**: OpenWeatherMap API
 
@@ -55,7 +55,10 @@ cd SistemaRiegoInteligenteTI
 
 # Crear archivo .env
 cp backend/.env.example backend/.env
-# Editar backend/.env y agregar API key de OpenWeatherMap
+# Editar backend/.env y agregar:
+# - SUPABASE_DB_URL (connection string de Supabase)
+# - WEATHER_API_KEY (OpenWeatherMap)
+# Crear schema en Supabase SQL Editor con docs/supabase_schema.sql
 
 # Ejecutar con Docker Compose
 docker-compose up -d
@@ -71,6 +74,9 @@ pip install -r backend/requirements.txt
 
 # Crear archivo .env
 cp backend/.env.example backend/.env
+# Editar backend/.env y agregar:
+# - SUPABASE_DB_URL (connection string de Supabase)
+# - WEATHER_API_KEY (OpenWeatherMap)
 
 # Iniciar Mosquitto MQTT (en terminal separada)
 # En Windows: descargar Eclipse Mosquitto
@@ -122,6 +128,11 @@ DEBUG=True
 API_TITLE=Sistema Riego Inteligente API
 API_VERSION=1.0.0
 
+# Supabase
+SUPABASE_DB_URL=postgresql+psycopg2://user:pass@host:5432/dbname
+SUPABASE_URL=https://xxxxx.supabase.co
+SUPABASE_KEY=your_supabase_anon_key
+
 # MQTT
 MQTT_BROKER_HOST=localhost
 MQTT_BROKER_PORT=1883
@@ -155,10 +166,18 @@ CADA 5 MINUTOS:
 
 ## 📊 Base de Datos
 
+Schema en Supabase: ver docs/supabase_schema.sql.
+
 ### Tablas principales
 
-**sensores**
-- id, dispositivo_id, humedad, temperatura, timestamp
+**ciudades**
+- id, nombre, codigo_pais
+
+**dispositivos**
+- id, nombre, ciudad_id, ubicacion_detallada, activo
+
+**lecturas_sensores**
+- id, dispositivo_id, humedad, temperatura, fecha_lectura
 
 **eventos_riego**
 - id, dispositivo_id, accion (ON/OFF), duracion, manual, timestamp
@@ -167,7 +186,7 @@ CADA 5 MINUTOS:
 - id, dispositivo_id, umbral_humedad, intervalo_lectura
 
 **pronostico_clima**
-- id, ciudad, fecha, lluvia_mm, temperatura, humedad
+- id, ciudad_id, fecha_pronostico, lluvia_mm, temperatura, humedad
 
 ## 🔌 Temas MQTT
 
@@ -189,6 +208,11 @@ cd backend
 pytest tests/
 ```
 
+Simular sensor:
+```bash
+python backend/sensor_simulator.py --count 5 --interval 2
+```
+
 ## 📱 Frontend (Próximamente)
 
 Aplicación Vue.js con:
@@ -207,6 +231,7 @@ docker build -t riego-backend backend/
 ### Run
 ```bash
 docker run -p 8000:8000 \
+     -e SUPABASE_DB_URL=postgresql+psycopg2://... \
   -e MQTT_BROKER_HOST=localhost \
   -e WEATHER_API_KEY=your_key \
   riego-backend
