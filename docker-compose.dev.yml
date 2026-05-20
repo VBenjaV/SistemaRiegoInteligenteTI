@@ -1,0 +1,10 @@
+# Desarrollo: hot-reload del backend (monta código local)
+# Uso: docker compose -f docker-compose.yml -f docker-compose.dev.yml up -d --build
+
+services:
+  backend:
+    environment:
+      DEBUG: "true"
+    volumes:
+      - ./backend:/app
+      - ./IotCore:/app/certs:ro

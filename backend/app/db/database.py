@@ -42,11 +42,10 @@ class EventoRiegoDB(Base):
 
 
 class ConfiguracionDB(Base):
-    """Modelo de base de datos para configuración"""
+    """Modelo alineado con Supabase: dispositivo_id es PK."""
     __tablename__ = "configuracion"
 
-    id = Column(Integer, primary_key=True, index=True)
-    dispositivo_id = Column(String(50), unique=True, index=True, nullable=False)
+    dispositivo_id = Column(String(50), primary_key=True, index=True, nullable=False)
     umbral_humedad = Column(Integer, default=40)
     intervalo_lectura_min = Column(Integer, default=5)
     lluvia_minima_mm = Column(Float, default=5.0)

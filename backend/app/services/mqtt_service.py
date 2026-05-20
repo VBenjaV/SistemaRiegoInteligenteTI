@@ -1,144 +1,173 @@
 import logging
 import json
-from datetime import datetime
+import ssl
+from datetime import datetime, timezone
+from pathlib import Path
 from typing import Callable, Optional
+
 import paho.mqtt.client as mqtt
-from threading import Lock
 
 from app.config import settings
+from app.services.mqtt_message_handler import process_mqtt_message
 
 logger = logging.getLogger(__name__)
 
 
 class MQTTClient:
-    """Cliente MQTT para comunicación con sensores y actuadores"""
+    """Cliente MQTT para AWS IoT Core (TLS) o broker local."""
 
     def __init__(self):
-        self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION1, client_id=settings.mqtt_client_id)
+        self.client = mqtt.Client(
+            mqtt.CallbackAPIVersion.VERSION1,
+            client_id=settings.mqtt_client_id,
+        )
         self.client.on_connect = self._on_connect
         self.client.on_disconnect = self._on_disconnect
         self.client.on_message = self._on_message
         self.client.on_publish = self._on_publish
-        
+
         self.connected = False
-        self.lock = Lock()
-        
-        # Callbacks personalizados
         self._on_message_callback: Optional[Callable] = None
-        
-        # Configurar credenciales si existen
-        if settings.mqtt_username and settings.mqtt_password:
-            self.client.username_pw_set(settings.mqtt_username, settings.mqtt_password)
+
+        if settings.mqtt_use_tls:
+            self._configure_tls()
+        elif settings.mqtt_username and settings.mqtt_password:
+            self.client.username_pw_set(
+                settings.mqtt_username,
+                settings.mqtt_password,
+            )
+
+    def _configure_tls(self):
+        """Configurar certificados para AWS IoT Core."""
+        for path, label in (
+            (settings.mqtt_ca_path, "CA"),
+            (settings.mqtt_cert_path, "certificado"),
+            (settings.mqtt_key_path, "clave privada"),
+        ):
+            if not Path(path).is_file():
+                raise FileNotFoundError(
+                    f"Archivo {label} MQTT no encontrado: {path}"
+                )
+
+        self.client.tls_set(
+            ca_certs=settings.mqtt_ca_path,
+            certfile=settings.mqtt_cert_path,
+            keyfile=settings.mqtt_key_path,
+            cert_reqs=ssl.CERT_REQUIRED,
+            tls_version=ssl.PROTOCOL_TLS_CLIENT,
+            ciphers=None,
+        )
+        self.client.tls_insecure_set(False)
+        logger.info("TLS configurado con certificados de %s", Path(settings.mqtt_ca_path).parent)
 
     def _on_connect(self, client, userdata, flags, rc):
-        """Callback cuando se conecta al broker"""
         if rc == 0:
             self.connected = True
-            logger.info(f"Conectado a MQTT broker: {settings.mqtt_broker_host}:{settings.mqtt_broker_port}")
-            
-            # Suscribirse a temas
-            self.client.subscribe(settings.mqtt_topic_subscribe_humidity)
-            self.client.subscribe(settings.mqtt_topic_subscribe_temp)
-            logger.info(f"Suscrito a temas: {settings.mqtt_topic_subscribe_humidity}, {settings.mqtt_topic_subscribe_temp}")
+            host = settings.mqtt_host
+            logger.info(
+                "Conectado a MQTT: %s:%s (TLS=%s)",
+                host,
+                settings.mqtt_broker_port,
+                settings.mqtt_use_tls,
+            )
+            client.subscribe(settings.mqtt_topic_subscribe, qos=1)
+            logger.info(
+                "Suscrito a: %s | Publica comandos en: %s",
+                settings.mqtt_topic_subscribe,
+                settings.mqtt_topic_publish,
+            )
         else:
-            logger.error(f"Error de conexión MQTT - código: {rc}")
+            logger.error("Error de conexión MQTT - código: %s", rc)
             self.connected = False
 
     def _on_disconnect(self, client, userdata, rc):
-        """Callback cuando se desconecta del broker"""
         self.connected = False
         if rc != 0:
-            logger.warning(f"Desconexión inesperada del MQTT broker - código: {rc}")
+            logger.warning("Desconexión inesperada MQTT - código: %s", rc)
         else:
-            logger.info("Desconectado del MQTT broker")
+            logger.info("Desconectado del broker MQTT")
 
     def _on_message(self, client, userdata, msg):
-        """Callback cuando se recibe un mensaje"""
         try:
-            payload = msg.payload.decode('utf-8')
-            logger.debug(f"Mensaje recibido en {msg.topic}: {payload}")
-            
-            # Llamar al callback personalizado si existe
+            payload = msg.payload.decode("utf-8")
+            logger.info("MQTT raw [%s]: %s", msg.topic, payload[:300])
+
+            process_mqtt_message(msg.topic, payload)
+
             if self._on_message_callback:
                 self._on_message_callback(msg.topic, payload)
         except Exception as e:
-            logger.error(f"Error procesando mensaje MQTT: {e}")
+            logger.error("Error procesando mensaje MQTT: %s", e)
 
     def _on_publish(self, client, userdata, mid):
-        """Callback cuando se publica un mensaje"""
-        logger.debug(f"Mensaje publicado - ID: {mid}")
+        logger.debug("Mensaje publicado - ID: %s", mid)
 
     def connect(self):
-        """Conectar al broker MQTT"""
         try:
-            logger.info(f"Intentando conectar a {settings.mqtt_broker_host}:{settings.mqtt_broker_port}")
-            self.client.connect(
-                settings.mqtt_broker_host,
+            host = settings.mqtt_host
+            if not host:
+                raise ValueError(
+                    "Configure AWS_IOT_ENDPOINT o MQTT_BROKER_HOST en .env"
+                )
+
+            logger.info(
+                "Conectando a %s:%s...",
+                host,
                 settings.mqtt_broker_port,
-                keepalive=settings.mqtt_keepalive
+            )
+            self.client.connect(
+                host,
+                settings.mqtt_broker_port,
+                keepalive=settings.mqtt_keepalive,
             )
             self.client.loop_start()
         except Exception as e:
-            logger.error(f"Error conectando a MQTT: {e}")
+            logger.error("Error conectando a MQTT: %s", e)
             raise
 
     def disconnect(self):
-        """Desconectar del broker MQTT"""
         try:
             self.client.loop_stop()
             self.client.disconnect()
-            logger.info("Desconectado de MQTT broker")
+            logger.info("Desconectado de MQTT")
         except Exception as e:
-            logger.error(f"Error desconectando de MQTT: {e}")
+            logger.error("Error desconectando MQTT: %s", e)
 
     def publish_command(self, accion: str, duracion_segundos: int = 0) -> bool:
-        """Publicar comando de riego
-        
-        Args:
-            accion: "ON" o "OFF"
-            duracion_segundos: duración en segundos (para ON)
-            
-        Returns:
-            True si se publicó exitosamente
-        """
+        """Publicar comando de riego en ESP8266/sub."""
         try:
             payload = {
                 "accion": accion,
                 "duracion_segundos": duracion_segundos,
-                "timestamp": datetime.utcnow().isoformat() + "Z"
+                "timestamp": datetime.now(timezone.utc).isoformat(),
             }
-            
+
             result = self.client.publish(
-                settings.mqtt_topic_publish_command,
+                settings.mqtt_topic_publish,
                 json.dumps(payload),
-                qos=1
+                qos=1,
             )
-            
+
             if result.rc == mqtt.MQTT_ERR_SUCCESS:
-                logger.info(f"Comando de riego publicado: {payload}")
+                logger.info("Comando publicado en %s: %s", settings.mqtt_topic_publish, payload)
                 return True
-            else:
-                logger.error(f"Error publicando comando: {result.rc}")
-                return False
+            logger.error("Error publicando comando: %s", result.rc)
+            return False
         except Exception as e:
-            logger.error(f"Error al publicar comando MQTT: {e}")
+            logger.error("Error al publicar comando MQTT: %s", e)
             return False
 
     def set_message_callback(self, callback: Callable):
-        """Establecer callback personalizado para mensajes"""
         self._on_message_callback = callback
 
     def is_connected(self) -> bool:
-        """Verificar si está conectado"""
         return self.connected
 
 
-# Instancia global
 mqtt_client: Optional[MQTTClient] = None
 
 
 def get_mqtt_client() -> MQTTClient:
-    """Obtener instancia global del cliente MQTT"""
     global mqtt_client
     if mqtt_client is None:
         mqtt_client = MQTTClient()
@@ -146,12 +175,10 @@ def get_mqtt_client() -> MQTTClient:
 
 
 async def init_mqtt():
-    """Inicializar conexión MQTT"""
     client = get_mqtt_client()
     client.connect()
 
 
 async def close_mqtt():
-    """Cerrar conexión MQTT"""
     client = get_mqtt_client()
     client.disconnect()

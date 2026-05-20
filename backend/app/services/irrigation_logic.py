@@ -5,11 +5,12 @@ from sqlalchemy.orm import Session
 from app.config import settings
 from app.models import RiegoAccion
 from app.services.database_service import (
-    SensorService,
     RiegoService,
     ConfiguracionService,
     ClimaService,
 )
+from app.services.mongo_sensor_service import MongoSensorService
+from app.config import settings
 from app.services.mqtt_service import get_mqtt_client
 from app.services.weather_service import get_weather_service
 
@@ -19,9 +20,9 @@ logger = logging.getLogger(__name__)
 class IrrigationLogic:
     """Lógica principal de toma de decisión para riego inteligente"""
 
-    def __init__(self, db: Session, dispositivo_id: str = "sensor1"):
+    def __init__(self, db: Session, dispositivo_id: str | None = None):
         self.db = db
-        self.dispositivo_id = dispositivo_id
+        self.dispositivo_id = dispositivo_id or settings.dispositivo_default_id
         self.mqtt_client = get_mqtt_client()
         self.weather_service = get_weather_service()
 
@@ -43,20 +44,20 @@ class IrrigationLogic:
 
         try:
             # 1. Obtener datos actuales
-            lectura = SensorService.obtener_ultima_lectura(self.db, self.dispositivo_id)
+            lectura = MongoSensorService.obtener_ultima_lectura(self.dispositivo_id)
             if not lectura:
                 resultado["motivo"] = "No hay lecturas de sensor disponibles"
                 logger.warning(f"No hay lecturas para {self.dispositivo_id}")
                 return resultado
 
             config = ConfiguracionService.obtener_configuracion(self.db, self.dispositivo_id)
-            resultado["humedad_actual"] = lectura.humedad
+            resultado["humedad_actual"] = lectura["humedad"]
             resultado["umbral"] = config.umbral_humedad
 
             # 2. Verificar si humedad está baja
-            if lectura.humedad >= config.umbral_humedad:
+            if lectura["humedad"] >= config.umbral_humedad:
                 resultado["decision"] = "NO_REGAR"
-                resultado["motivo"] = f"Humedad {lectura.humedad}% >= umbral {config.umbral_humedad}%"
+                resultado["motivo"] = f"Humedad {lectura['humedad']}% >= umbral {config.umbral_humedad}%"
                 logger.info(resultado["motivo"])
                 return resultado
 
@@ -85,7 +86,7 @@ class IrrigationLogic:
             resultado["decision"] = "REGAR"
             resultado["accion_tomada"] = "ON"
             resultado["motivo"] = (
-                f"Humedad {lectura.humedad}% < umbral {config.umbral_humedad}%, "
+                f"Humedad {lectura['humedad']}% < umbral {config.umbral_humedad}%, "
                 f"lluvia esperada {weather_info['lluvia_pronostico']['lluvia_total_mm']}mm"
             )
 

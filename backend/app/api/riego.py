@@ -11,11 +11,12 @@ from app.models import (
     RespuestaControl,
     RiegoAccion,
 )
+from app.config import settings
 from app.services.database_service import (
     RiegoService,
-    SensorService,
     ConfiguracionService,
 )
+from app.services.mongo_sensor_service import MongoSensorService
 from app.services.irrigation_logic import IrrigationLogic
 
 router = APIRouter(prefix="/api/riego", tags=["Riego"])
@@ -28,12 +29,13 @@ router = APIRouter(prefix="/api/riego", tags=["Riego"])
     description="Retorna si el riego está activo y cuánto tiempo falta"
 )
 async def obtener_estado(
-    dispositivo_id: str = Query("sensor1", description="ID del dispositivo"),
+    dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
     db: Session = Depends(get_db)
 ):
     """Obtener estado actual del riego"""
-    ultimo_evento = RiegoService.obtener_ultimo_evento(db, dispositivo_id)
-    ultima_lectura = SensorService.obtener_ultima_lectura(db, dispositivo_id)
+    device = dispositivo_id or settings.dispositivo_default_id
+    ultimo_evento = RiegoService.obtener_ultimo_evento(db, device)
+    ultima_lectura = MongoSensorService.obtener_ultima_lectura(device)
     
     activo = False
     duracion_restante = None
@@ -53,7 +55,7 @@ async def obtener_estado(
         activo=activo,
         duracion_restante_segundos=duracion_restante,
         ultim_evento=ultimo_evento,
-        ultima_lectura_humedad=ultima_lectura.humedad if ultima_lectura else None
+        ultima_lectura_humedad=ultima_lectura["humedad"] if ultima_lectura else None
     )
 
 
@@ -64,28 +66,29 @@ async def obtener_estado(
     description="Retorna log de ciclos de riego"
 )
 async def obtener_historial(
-    dispositivo_id: str = Query("sensor1", description="ID del dispositivo"),
+    dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
     limit: int = Query(50, ge=1, le=500, description="Número de resultados"),
     offset: int = Query(0, ge=0, description="Desplazamiento"),
     dias: int = Query(None, ge=1, le=365, description="Últimos N días (opcional)"),
     db: Session = Depends(get_db)
 ):
     """Obtener historial de eventos de riego"""
+    device = dispositivo_id or settings.dispositivo_default_id
     inicio = None
     fin = None
-    
+
     if dias:
         fin = datetime.utcnow()
         inicio = fin - timedelta(days=dias)
-    
+
     eventos, total = RiegoService.obtener_historial(
-        db, dispositivo_id, limit, offset, inicio, fin
+        db, device, limit, offset, inicio, fin
     )
-    
+
     return {
         "total": total,
         "eventos": eventos,
-        "dispositivo_id": dispositivo_id,
+        "dispositivo_id": device,
         "periodo": {
             "inicio": inicio,
             "fin": fin
@@ -100,7 +103,7 @@ async def obtener_historial(
     description="Ejecuta el algoritmo de toma de decisión para riego inteligente"
 )
 async def evaluar_riego(
-    dispositivo_id: str = Query("sensor1", description="ID del dispositivo"),
+    dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
     db: Session = Depends(get_db)
 ):
     """Evaluar y actuar en lógica de riego"""
@@ -137,7 +140,7 @@ async def forzar_riego_on(
     description="Apaga el sistema de riego"
 )
 async def forzar_riego_off(
-    dispositivo_id: str = Query("sensor1", description="ID del dispositivo"),
+    dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
     db: Session = Depends(get_db)
 ):
     """Forzar desactivación de riego"""
@@ -158,16 +161,17 @@ async def forzar_riego_off(
     description="Retorna cantidad total de segundos que el riego estuvo activo"
 )
 async def obtener_tiempo_total_hoy(
-    dispositivo_id: str = Query("sensor1", description="ID del dispositivo"),
+    dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
     db: Session = Depends(get_db)
 ):
     """Obtener tiempo total de riego hoy"""
-    segundos = RiegoService.obtener_tiempo_riego_total_hoy(db, dispositivo_id)
+    device = dispositivo_id or settings.dispositivo_default_id
+    segundos = RiegoService.obtener_tiempo_riego_total_hoy(db, device)
     horas = segundos / 3600
     minutos = (segundos % 3600) / 60
     
     return {
-        "dispositivo_id": dispositivo_id,
+        "dispositivo_id": device,
         "fecha": datetime.utcnow().date().isoformat(),
         "tiempo_total_segundos": segundos,
         "tiempo_total_horas": round(horas, 2),

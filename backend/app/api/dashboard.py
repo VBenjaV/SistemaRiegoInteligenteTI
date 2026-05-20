@@ -6,10 +6,10 @@ from app.db.database import get_db
 from app.config import settings
 from app.models import DashboardActual
 from app.services.database_service import (
-    SensorService,
     RiegoService,
     ConfiguracionService,
 )
+from app.services.mongo_sensor_service import MongoSensorService
 from app.services.weather_service import get_weather_service
 
 router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
@@ -22,19 +22,26 @@ router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
     description="Retorna toda la información actual para el dashboard"
 )
 async def obtener_dashboard(
-    dispositivo_id: str = Query("sensor1", description="ID del dispositivo"),
+    dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
     db: Session = Depends(get_db)
 ):
     """Obtener datos para dashboard"""
-    
-    # Obtener sensor actual
-    ultima_lectura = SensorService.obtener_ultima_lectura(db, dispositivo_id)
-    
-    # Obtener configuración
-    config = ConfiguracionService.obtener_configuracion(db, dispositivo_id)
-    
-    # Obtener estado de riego
-    ultimo_evento = RiegoService.obtener_ultimo_evento(db, dispositivo_id)
+    device = dispositivo_id or settings.dispositivo_default_id
+
+    ultima_lectura = MongoSensorService.obtener_ultima_lectura(device)
+
+    umbral = settings.humidity_threshold_percent
+    try:
+        config = ConfiguracionService.obtener_configuracion(db, device)
+        umbral = config.umbral_humedad
+    except Exception:
+        pass
+
+    ultimo_evento = None
+    try:
+        ultimo_evento = RiegoService.obtener_ultimo_evento(db, device)
+    except Exception:
+        pass
     
     riego_activo = False
     duracion_restante = None
@@ -65,14 +72,14 @@ async def obtener_dashboard(
             pass
     
     return DashboardActual(
-        humedad_actual=ultima_lectura.humedad if ultima_lectura else None,
-        temperatura_actual=ultima_lectura.temperatura if ultima_lectura else None,
+        humedad_actual=ultima_lectura["humedad"] if ultima_lectura else None,
+        temperatura_actual=ultima_lectura.get("temperatura") if ultima_lectura else None,
         riego_activo=riego_activo,
         duracion_riego_restante=duracion_restante,
         clima_ciudad=settings.weather_city,
         clima_temperatura=clima_info["temperatura"],
         clima_lluvia_24h=clima_info["lluvia_24h"],
-        umbral_humedad=config.umbral_humedad,
+        umbral_humedad=umbral,
         ultimo_evento_riego=ultimo_evento,
         actualizado=datetime.utcnow()
     )
@@ -85,28 +92,41 @@ async def obtener_dashboard(
     description="Retorna un resumen rápido del estado del sistema"
 )
 async def obtener_resumen(
-    dispositivo_id: str = Query("sensor1", description="ID del dispositivo"),
+    dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
     db: Session = Depends(get_db)
 ):
     """Obtener resumen rápido"""
-    
-    ultima_lectura = SensorService.obtener_ultima_lectura(db, dispositivo_id)
-    config = ConfiguracionService.obtener_configuracion(db, dispositivo_id)
-    ultimo_evento = RiegoService.obtener_ultimo_evento(db, dispositivo_id)
-    tiempo_riego_hoy = RiegoService.obtener_tiempo_riego_total_hoy(db, dispositivo_id)
-    promedio = SensorService.obtener_promedio_humedad(db, dispositivo_id, minutos=60)
-    
+    device = dispositivo_id or settings.dispositivo_default_id
+
+    ultima_lectura = MongoSensorService.obtener_ultima_lectura(device)
+    promedio = MongoSensorService.obtener_promedio_humedad(device, minutos=60)
+
+    umbral = settings.humidity_threshold_percent
+    try:
+        config = ConfiguracionService.obtener_configuracion(db, device)
+        umbral = config.umbral_humedad
+    except Exception:
+        pass
+
+    ultimo_evento = None
+    tiempo_riego_hoy = 0
+    try:
+        ultimo_evento = RiegoService.obtener_ultimo_evento(db, device)
+        tiempo_riego_hoy = RiegoService.obtener_tiempo_riego_total_hoy(db, device)
+    except Exception:
+        pass
+
     return {
-        "dispositivo_id": dispositivo_id,
+        "dispositivo_id": device,
         "humedad": {
-            "actual": ultima_lectura.humedad if ultima_lectura else None,
+            "actual": ultima_lectura["humedad"] if ultima_lectura else None,
             "promedio_1h": round(promedio, 2) if promedio else None,
-            "umbral": config.umbral_humedad
+            "umbral": umbral,
         },
         "riego": {
             "activo": ultimo_evento.accion == "ON" if ultimo_evento else False,
             "ultimo_evento": ultimo_evento.accion if ultimo_evento else None,
-            "tiempo_total_hoy_min": round(tiempo_riego_hoy / 60, 2)
+            "tiempo_total_hoy_min": round(tiempo_riego_hoy / 60, 2),
         },
-        "actualizado": datetime.utcnow().isoformat() + "Z"
+        "actualizado": datetime.utcnow().isoformat() + "Z",
     }

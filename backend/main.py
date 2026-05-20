@@ -6,8 +6,9 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db.database import init_db
+from app.db.mongo import init_mongo, close_mongo
 from app.api import router
-from app.services import init_mqtt, close_mqtt
+from app.services import init_mqtt, close_mqtt, get_mqtt_client
 
 # Configurar logging
 logging.basicConfig(
@@ -22,18 +23,28 @@ async def lifespan(app: FastAPI):
     """Gestionar ciclo de vida de la aplicación"""
     # Startup
     logger.info("Iniciando aplicación...")
-    init_db()
-    logger.info("Base de datos inicializada")
-    
-    await init_mqtt()
-    logger.info("MQTT inicializado")
+    try:
+        init_db()
+        logger.info("Base de datos PostgreSQL inicializada")
+    except Exception as e:
+        logger.error("PostgreSQL no disponible al inicio: %s", e)
+
+    init_mongo()
+    logger.info("MongoDB inicializado")
+
+    try:
+        await init_mqtt()
+        logger.info("AWS IoT Core (MQTT) inicializado")
+    except Exception as e:
+        logger.error("MQTT no disponible al inicio: %s", e)
     
     yield
     
     # Shutdown
     logger.info("Cerrando aplicación...")
     await close_mqtt()
-    logger.info("MQTT cerrado")
+    close_mongo()
+    logger.info("Conexiones cerradas")
 
 
 # Crear aplicación
@@ -75,6 +86,19 @@ async def health_check():
     return {
         "status": "OK",
         "servicio": "Sistema de Riego Inteligente"
+    }
+
+
+@app.get("/api/debug/mqtt", tags=["Info"])
+async def mqtt_status():
+    """Estado de conexión MQTT y topics configurados."""
+    client = get_mqtt_client()
+    return {
+        "conectado": client.is_connected(),
+        "endpoint": settings.mqtt_host,
+        "topic_suscrito": settings.mqtt_topic_subscribe,
+        "topic_publicar": settings.mqtt_topic_publish,
+        "nota": "Si conectado=true pero no hay lecturas, revisa la policy IoT del certificado en IotCore/",
     }
 
 
