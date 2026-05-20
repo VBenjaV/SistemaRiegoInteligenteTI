@@ -51,4 +51,5 @@ Thumbs.db
 .agents
 .github
 .opencode
-/IotCore
+/IotCore/
+.h 
