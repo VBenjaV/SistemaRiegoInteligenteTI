@@ -298,23 +298,24 @@ h1 {
 
 .btn-logout {
   padding: 0.5rem 1rem;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  border: none;
+  background: none;
+  color: #10b981;
+  border: 1px solid #10b981;
   border-radius: 5px;
   font-size: 0.85rem;
   font-weight: 600;
   cursor: pointer;
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition: all 0.2s ease;
 }
 
 .btn-logout:hover:not(:disabled) {
-  transform: translateY(-2px);
-  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+  background: rgba(16, 185, 129, 0.1);
+  border-color: #34d399;
+  color: #34d399;
 }
 
 .btn-logout:disabled {
-  opacity: 0.7;
+  opacity: 0.5;
   cursor: not-allowed;
 }
 
