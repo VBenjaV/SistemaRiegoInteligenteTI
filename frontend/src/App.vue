@@ -1,10 +1,12 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
-import { fetchDashboard, fetchResumen, fetchHistorial, fetchHealth } from './api'
+import Login from './Login.vue'
+import { fetchDashboard, fetchResumen, fetchHistorial, fetchHealth, logout, isAuthenticated } from './api'
 
 const POLL_MS = 5000
 const dispositivoId = 'esp8266'
 
+const autenticado = ref(false)
 const dashboard = ref(null)
 const resumen = ref(null)
 const historial = ref([])
@@ -14,6 +16,10 @@ const loading = ref(true)
 const lastUpdate = ref(null)
 
 let timer = null
+
+function verificarAutenticacion() {
+  autenticado.value = isAuthenticated()
+}
 
 async function loadData() {
   try {
@@ -100,26 +106,52 @@ const chartPath = computed(() => {
     .join(' ')
 })
 
-onMounted(() => {
+function handleLoginSuccess() {
+  verificarAutenticacion()
   loadData()
   timer = setInterval(loadData, POLL_MS)
+}
+
+function handleLogout() {
+  logout()
+  verificarAutenticacion()
+  if (timer) clearInterval(timer)
+}
+
+onMounted(() => {
+  verificarAutenticacion()
+  if (autenticado.value) {
+    loadData()
+    timer = setInterval(loadData, POLL_MS)
+  }
 })
 
-onUnmounted(() => clearInterval(timer))
+onUnmounted(() => {
+  if (timer) clearInterval(timer)
+})
 </script>
 
 <template>
-  <div class="app">
+  <!-- Mostrar Login si no está autenticado -->
+  <div v-if="!autenticado">
+    <Login @login-success="handleLoginSuccess" />
+  </div>
+
+  <!-- Mostrar Dashboard si está autenticado -->
+  <div v-else class="app">
     <header class="header">
       <div>
         <h1>Sistema de Riego Inteligente</h1>
         <p class="subtitle">Datos en vivo desde AWS IoT Core → MongoDB</p>
       </div>
-      <div class="status-pills">
-        <span class="pill" :class="apiOk ? 'ok' : 'err'">
-          {{ apiOk ? 'API conectada' : 'API desconectada' }}
-        </span>
-        <span class="pill device">ESP8266 · {{ dispositivoId }}</span>
+      <div class="header-right">
+        <div class="status-pills">
+          <span class="pill" :class="apiOk ? 'ok' : 'err'">
+            {{ apiOk ? 'API conectada' : 'API desconectada' }}
+          </span>
+          <span class="pill device">ESP8266 · {{ dispositivoId }}</span>
+        </div>
+        <button @click="handleLogout" class="btn-logout">Logout</button>
       </div>
     </header>
 
@@ -203,6 +235,13 @@ onUnmounted(() => clearInterval(timer))
   margin-bottom: 1.5rem;
 }
 
+.header-right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.75rem;
+}
+
 h1 {
   font-size: 1.5rem;
   font-weight: 700;
@@ -244,6 +283,39 @@ h1 {
 
 .pill.device {
   color: var(--blue);
+}
+
+.user-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+}
+
+.user-email {
+  color: var(--muted);
+}
+
+.btn-logout {
+  padding: 0.5rem 1rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 5px;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.btn-logout:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+}
+
+.btn-logout:disabled {
+  opacity: 0.7;
+  cursor: not-allowed;
 }
 
 .banner {
@@ -406,5 +478,25 @@ h1 {
 
 .footer a:hover {
   text-decoration: underline;
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .header-right {
+    align-items: stretch;
+  }
+
+  .user-info {
+    justify-content: space-between;
+  }
+
+  .btn-logout {
+    width: 100%;
+  }
 }
 </style>

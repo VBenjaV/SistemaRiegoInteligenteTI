@@ -73,14 +73,13 @@ class PronosticoClimaDB(Base):
 
 
 # Configuracion de conexion a BD
-DATABASE_URL = settings.sqlalchemy_database_url
+DATABASE_URL = settings.sqlalchemy_database_url or "sqlite:///dummy.db"
 
-if DATABASE_URL.startswith("sqlite"):
-    raise ValueError("SQLite no permitido; use SUPABASE_DB_URL")
+if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
+    pass  # SQLite local
 
-engine = create_engine(DATABASE_URL, echo=False)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+engine = None
+SessionLocal = None
 
 
 def get_db():

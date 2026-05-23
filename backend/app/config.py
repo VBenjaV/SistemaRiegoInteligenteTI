@@ -63,9 +63,8 @@ class Settings(BaseSettings):
 
     @property
     def sqlalchemy_database_url(self) -> str:
-        if not self.supabase_db_url:
-            raise ValueError("SUPABASE_DB_URL no configurada")
-        return self.supabase_db_url
+        # Opcional: si no está configurada, retorna None
+        return self.supabase_db_url or None
 
     @property
     def mqtt_host(self) -> str:

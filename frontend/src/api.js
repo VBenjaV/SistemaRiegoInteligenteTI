@@ -1,15 +1,52 @@
 const API_BASE = import.meta.env.VITE_API_BASE || ''
 
-async function request(path) {
-  const res = await fetch(`${API_BASE}${path}`)
+async function request(path, options = {}) {
+  const res = await fetch(`${API_BASE}${path}`, options)
   if (!res.ok) {
     const err = new Error(`HTTP ${res.status}`)
     err.status = res.status
+    err.data = await res.json().catch(() => ({}))
     throw err
   }
   return res.json()
 }
 
+// ====== AUTENTICACIÓN ======
+export async function register(email, password) {
+  return request('/auth/register', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  })
+}
+
+export async function login(email, password) {
+  const data = await request('/auth/login', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, password })
+  })
+  // Guardar token
+  localStorage.setItem('accessToken', data.access_token)
+  localStorage.setItem('user', JSON.stringify({ user_id: data.user_id, email: data.email }))
+  return data
+}
+
+export function logout() {
+  localStorage.removeItem('accessToken')
+  localStorage.removeItem('user')
+}
+
+export function isAuthenticated() {
+  return !!localStorage.getItem('accessToken')
+}
+
+export function getCurrentUser() {
+  const user = localStorage.getItem('user')
+  return user ? JSON.parse(user) : null
+}
+
+// ====== ENDPOINTS DEL DASHBOARD ======
 export function fetchDashboard(dispositivoId = 'esp8266') {
   return request(`/api/dashboard/actual?dispositivo_id=${dispositivoId}`)
 }
