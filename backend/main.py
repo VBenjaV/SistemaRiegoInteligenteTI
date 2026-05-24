@@ -132,15 +132,23 @@ async def register(request: RegisterRequest):
             raise Exception("Error en el registro")
     except Exception as e:
         error_msg = str(e).lower()
-        if "already exists" in error_msg:
+        if "already exists" in error_msg or "already registered" in error_msg:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Este email ya está registrado"
             )
+        if "invalid api key" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Clave de Supabase incorrecta. En backend/.env usa la clave "
+                    "'anon' / 'publishable' (eyJ...), no la 'service_role' (sb_secret_...)."
+                ),
+            )
         logger.error(f"Error registrando usuario: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Error en el registro"
+            detail="Error en el registro. Revisa email, contraseña (mín. 8) o configuración de Supabase.",
         )
 
 
@@ -169,6 +177,15 @@ async def login(request: LoginRequest):
         else:
             raise Exception("Error en la autenticación")
     except Exception as e:
+        error_msg = str(e).lower()
+        if "invalid api key" in error_msg:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=(
+                    "Clave de Supabase incorrecta. En backend/.env usa la clave "
+                    "'anon' / 'publishable' (eyJ...), no la 'service_role' (sb_secret_...)."
+                ),
+            )
         logger.error(f"Error autenticando usuario: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,

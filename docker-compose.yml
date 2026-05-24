@@ -1,4 +1,9 @@
 # Sistema de Riego Inteligente — stack completo
+#
+# Antes del primer arranque:
+#   1. cp backend/.env.example backend/.env   (y completar SUPABASE_*, WEATHER_API_KEY, AWS_IOT_ENDPOINT)
+#   2. Colocar certificados AWS IoT en ./IotCore/ (AmazonRootCA1.pem + device cert/key)
+#
 # Uso: docker compose up -d --build
 # Dashboard: http://localhost:5173  |  API: http://localhost:8000/docs
 
@@ -30,7 +35,8 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
       # Overrides para red Docker (tienen prioridad sobre backend/.env)
       MONGODB_URL: mongodb://mongodb:27017
@@ -43,6 +49,7 @@ services:
       API_HOST: 0.0.0.0
       API_PORT: "8000"
     volumes:
+      # Si ./IotCore no existe, créalo y copia los certificados del dispositivo IoT
       - ./IotCore:/app/certs:ro
     depends_on:
       mongodb:

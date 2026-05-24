@@ -1,6 +1,7 @@
-FROM node:20-alpine AS build
+FROM node:20-bookworm-slim AS build
 WORKDIR /app
-COPY package.json package-lock.json* ./
+# Sin package-lock: el lock de Windows omite @rollup/rollup-linux-x64-gnu (bug npm #4828)
+COPY package.json ./
 RUN npm install
 COPY . .
 ARG VITE_API_BASE=

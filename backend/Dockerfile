@@ -11,7 +11,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/app ./app
 COPY backend/main.py .
-COPY IotCore /app/certs
+# Certificados AWS IoT: montados en runtime por docker-compose (./IotCore → /app/certs)
+RUN mkdir -p /app/certs
 
 EXPOSE 8000
 
