@@ -53,4 +53,8 @@ Thumbs.db
 .opencode
 /IotCore/
 .h 
-.pem
+
+# Certificados y claves (SSH, AWS IoT, etc.)
+*.pem
+*.pem.crt
+*.pem.key
