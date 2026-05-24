@@ -51,12 +51,38 @@ En Amazon Linux el usuario suele ser `ec2-user`; en Ubuntu, `ubuntu`.
 
 ---
 
-## 3. Instalar Docker en el servidor
+## 3. Clonar la rama de deploy
 
-Desde el repositorio (después de clonar) o copiando el script:
+Los archivos de producción están en la rama **`DeployAWS`** (no en `main`):
 
 ```bash
-git clone https://github.com/<tu-org>/SistemaRiegoInteligenteTI.git
+git clone -b DeployAWS https://github.com/VBenjaV/SistemaRiegoInteligenteTI.git
+cd SistemaRiegoInteligenteTI
+```
+
+Si el repositorio es **privado**, usa SSH o un token:
+
+```bash
+git clone -b DeployAWS git@github.com:VBenjaV/SistemaRiegoInteligenteTI.git
+# o: git clone -b DeployAWS https://<TOKEN>@github.com/VBenjaV/SistemaRiegoInteligenteTI.git
+```
+
+Si ya clonaste `main`, cambia de rama:
+
+```bash
+cd SistemaRiegoInteligenteTI
+git fetch origin
+git checkout DeployAWS
+git pull origin DeployAWS
+```
+
+---
+
+## 4. Instalar Docker en el servidor
+
+Desde la raíz del repo clonado:
+
+```bash
 cd SistemaRiegoInteligenteTI
 chmod +x scripts/*.sh
 bash scripts/ec2-setup.sh
@@ -73,9 +99,9 @@ docker compose version
 
 ---
 
-## 4. Variables de entorno y secretos
+## 5. Variables de entorno y secretos
 
-### 4.1 `backend/.env`
+### 5.1 `backend/.env`
 
 ```bash
 cp backend/.env.example backend/.env
@@ -92,7 +118,7 @@ Ajusta al menos:
 
 En Docker, **no hace falta** cambiar `MONGODB_URL`: `docker-compose.yml` ya usa `mongodb://mongodb:27017`.
 
-### 4.2 Certificados AWS IoT (`IotCore/`)
+### 5.2 Certificados AWS IoT (`IotCore/`)
 
 La carpeta `IotCore/` no está en Git (`.gitignore`). Cópiala desde tu máquina local:
 
@@ -109,7 +135,7 @@ Debe contener, entre otros:
 
 ---
 
-## 5. Levantar la aplicación
+## 6. Levantar la aplicación
 
 ```bash
 cd SistemaRiegoInteligenteTI
@@ -136,7 +162,7 @@ Documentación API: `http://<IP_PUBLICA_EC2>/docs`
 
 ---
 
-## 6. HTTPS con Let's Encrypt (opcional)
+## 7. HTTPS con Let's Encrypt (opcional)
 
 Opción sencilla: **Caddy** o **nginx** en el host como reverse proxy. Ejemplo con Certbot en Ubuntu:
 
@@ -150,17 +176,26 @@ Luego configura un proxy en el host que termine TLS en 443 y reenvíe a `127.0.0
 
 ---
 
-## 7. Actualizar tras cambios en el código
+## 8. Actualizar tras cambios en el código
+
+En tu PC, sube la rama:
+
+```bash
+git push origin DeployAWS
+```
+
+En EC2:
 
 ```bash
 cd SistemaRiegoInteligenteTI
-git pull
 ./scripts/deploy-prod.sh
 ```
 
+(`deploy-prod.sh` hace pull de `DeployAWS` por defecto; otra rama: `GIT_BRANCH=main ./scripts/deploy-prod.sh`)
+
 ---
 
-## 8. Supabase y red
+## 9. Supabase y red
 
 - **Auth (login/registro):** en el dashboard de Supabase → Authentication → URL Configuration, agrega la URL del sitio, por ejemplo `http://<IP_EC2>` o `https://riego.tudominio.com`.
 - **Base de datos:** Supabase ya está en la nube; la EC2 solo necesita salida a Internet (puerto 5432 al pooler).
@@ -168,7 +203,7 @@ git pull
 
 ---
 
-## 9. Solución de problemas
+## 10. Solución de problemas
 
 | Síntoma | Qué revisar |
 |---------|-------------|
@@ -189,10 +224,12 @@ docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 
 ---
 
-## 10. Resumen de comandos
+## 11. Resumen de comandos
 
 ```bash
 # En EC2 (primera vez)
+git clone -b DeployAWS https://github.com/VBenjaV/SistemaRiegoInteligenteTI.git
+cd SistemaRiegoInteligenteTI
 bash scripts/ec2-setup.sh
 # (re-login SSH)
 cp backend/.env.example backend/.env && nano backend/.env

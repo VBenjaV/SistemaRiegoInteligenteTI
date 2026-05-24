@@ -15,8 +15,11 @@ if [[ ! -f IotCore/AmazonRootCA1.pem ]]; then
   exit 1
 fi
 
-echo "==> Git pull (si aplica)..."
-git pull --ff-only 2>/dev/null || true
+BRANCH="${GIT_BRANCH:-DeployAWS}"
+echo "==> Actualizar rama ${BRANCH}..."
+git fetch origin
+git checkout "$BRANCH"
+git pull --ff-only origin "$BRANCH"
 
 echo "==> Build y arranque..."
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
