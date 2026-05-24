@@ -221,6 +221,16 @@ Aplicación Vue.js con:
 - Control manual
 - Panel de configuración
 
+## ☁️ Despliegue en AWS EC2
+
+Guía paso a paso (Docker Compose en producción): **[docs/DEPLOY_EC2.md](./docs/DEPLOY_EC2.md)**
+
+```bash
+# En el servidor EC2
+bash scripts/ec2-setup.sh
+./scripts/deploy-prod.sh
+```
+
 ## 🐳 Docker
 
 ### Build

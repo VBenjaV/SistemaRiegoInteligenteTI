@@ -1,0 +1,19 @@
+# Producción en EC2 (u otro servidor)
+# Uso: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+#
+# - Solo expone el puerto 80 (dashboard + API vía proxy nginx)
+# - MongoDB y backend quedan en la red interna Docker
+# - DEBUG desactivado
+
+services:
+  mongodb:
+    ports: []
+
+  backend:
+    ports: []
+    environment:
+      DEBUG: "false"
+
+  frontend:
+    ports:
+      - "80:80"
