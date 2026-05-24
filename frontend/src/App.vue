@@ -1,7 +1,18 @@
 <script setup>
 import { ref, onMounted, onUnmounted, computed } from 'vue'
 import Login from './Login.vue'
-import { fetchDashboard, fetchResumen, fetchHistorial, fetchHealth, logout, isAuthenticated } from './api'
+import {
+  fetchDashboard,
+  fetchResumen,
+  fetchHistorial,
+  fetchHealth,
+  logout,
+  isAuthenticated,
+  iniciarRiegoManual,
+  detenerRiegoManual,
+  fetchMqttStatus,
+  fetchClimaPronostico,
+} from './api'
 
 const POLL_MS = 5000
 const dispositivoId = 'esp8266'
@@ -14,6 +25,13 @@ const error = ref(null)
 const apiOk = ref(false)
 const loading = ref(true)
 const lastUpdate = ref(null)
+const riegoCmdLoading = ref(false)
+const riegoCmdMsg = ref(null)
+const riegoCmdError = ref(null)
+const mqttOk = ref(false)
+const mqttTopicPublish = ref('')
+const clima = ref(null)
+const climaError = ref(null)
 
 let timer = null
 
@@ -53,6 +71,28 @@ async function loadData() {
     } catch {
       resumen.value = null
     }
+
+    try {
+      const mqtt = await fetchMqttStatus()
+      mqttOk.value = !!mqtt.conectado
+      mqttTopicPublish.value = mqtt.topic_publicar || ''
+    } catch {
+      mqttOk.value = false
+    }
+
+    try {
+      clima.value = await fetchClimaPronostico(
+        dashboard.value?.clima_ciudad || undefined
+      )
+      climaError.value = null
+    } catch (e) {
+      clima.value = null
+      climaError.value =
+        e.status === 503
+          ? 'Clima no configurado (WEATHER_API_KEY)'
+          : 'No se pudo cargar el clima'
+    }
+
     error.value = null
     lastUpdate.value = new Date()
   } catch (e) {
@@ -73,6 +113,10 @@ const humedad = computed(() => dashboard.value?.humedad_actual ?? resumen.value?
 const temperatura = computed(() => dashboard.value?.temperatura_actual)
 const umbral = computed(() => dashboard.value?.umbral_humedad ?? resumen.value?.humedad?.umbral ?? 40)
 const riegoActivo = computed(() => dashboard.value?.riego_activo ?? resumen.value?.riego?.activo ?? false)
+
+const climaActual = computed(() => clima.value?.clima_actual)
+const lluviaPronostico = computed(() => clima.value?.lluvia_pronostico)
+const recomiendaRiego = computed(() => clima.value?.se_debe_regar)
 
 const humedadEstado = computed(() => {
   const h = humedad.value
@@ -118,6 +162,33 @@ function handleLogout() {
   if (timer) clearInterval(timer)
 }
 
+async function enviarComandoRiego(accion) {
+  if (!mqttOk.value) {
+    riegoCmdError.value = 'MQTT no conectado. Espera a que el backend conecte a AWS IoT Core.'
+    return
+  }
+  riegoCmdLoading.value = true
+  riegoCmdMsg.value = null
+  riegoCmdError.value = null
+  try {
+    const res =
+      accion === 'iniciar' ? await iniciarRiegoManual() : await detenerRiegoManual()
+    const topic = mqttTopicPublish.value || 'esp8266/sub'
+    const cmd = accion === 'iniciar' ? 'regar' : 'detener'
+    riegoCmdMsg.value = res.mensaje || `«${cmd}» enviado a ${topic}`
+    setTimeout(() => {
+      riegoCmdMsg.value = null
+    }, 4000)
+  } catch (e) {
+    riegoCmdError.value = e.data?.detail || 'No se pudo enviar el comando MQTT'
+    setTimeout(() => {
+      riegoCmdError.value = null
+    }, 5000)
+  } finally {
+    riegoCmdLoading.value = false
+  }
+}
+
 onMounted(() => {
   verificarAutenticacion()
   if (autenticado.value) {
@@ -140,10 +211,45 @@ onUnmounted(() => {
   <!-- Mostrar Dashboard si está autenticado -->
   <div v-else class="app">
     <header class="header">
-      <div>
+      <div class="header-brand">
         <h1>Sistema de Riego Inteligente</h1>
         <p class="subtitle">Datos en vivo desde AWS IoT Core → MongoDB</p>
       </div>
+
+      <div class="header-weather card">
+        <template v-if="clima">
+          <div class="weather-top">
+            <span class="weather-city">{{ clima.ciudad }}</span>
+            <span
+              class="weather-badge"
+              :class="recomiendaRiego ? 'riego-ok' : 'riego-hold'"
+            >
+              {{ recomiendaRiego ? 'Riego recomendado' : 'Evitar riego (lluvia)' }}
+            </span>
+          </div>
+          <div class="weather-stats">
+            <span v-if="climaActual?.temperatura != null" class="weather-stat">
+              <strong>{{ Math.round(climaActual.temperatura) }}°C</strong>
+              <small>aire</small>
+            </span>
+            <span v-if="climaActual?.humedad != null" class="weather-stat">
+              <strong>{{ climaActual.humedad }}%</strong>
+              <small>humedad</small>
+            </span>
+            <span v-if="lluviaPronostico" class="weather-stat">
+              <strong>{{ lluviaPronostico.lluvia_total_mm?.toFixed(1) ?? '0' }} mm</strong>
+              <small>lluvia {{ clima.horas_pronostico }}h</small>
+            </span>
+          </div>
+          <p v-if="climaActual?.descripcion" class="weather-desc">
+            {{ climaActual.descripcion }}
+          </p>
+        </template>
+        <p v-else class="weather-unavailable">
+          {{ climaError || 'Cargando clima…' }}
+        </p>
+      </div>
+
       <div class="header-right">
         <div class="status-pills">
           <span class="pill" :class="apiOk ? 'ok' : 'err'">
@@ -192,6 +298,30 @@ onUnmounted(() => {
         <span v-else-if="resumen?.riego?.tiempo_total_hoy_min != null" class="hint">
           Hoy: {{ resumen.riego.tiempo_total_hoy_min }} min
         </span>
+        <span class="hint mqtt-hint" :class="mqttOk ? 'mqtt-ok' : 'mqtt-err'">
+          MQTT {{ mqttOk ? 'conectado' : 'desconectado' }}
+          <template v-if="mqttTopicPublish"> · {{ mqttTopicPublish }}</template>
+        </span>
+        <div class="riego-controls">
+          <button
+            type="button"
+            class="btn-riego btn-riego-on"
+            :disabled="riegoCmdLoading"
+            @click="enviarComandoRiego('iniciar')"
+          >
+            {{ riegoCmdLoading ? 'Enviando…' : 'Iniciar riego' }}
+          </button>
+          <button
+            type="button"
+            class="btn-riego btn-riego-off"
+            :disabled="riegoCmdLoading"
+            @click="enviarComandoRiego('detener')"
+          >
+            Detener riego
+          </button>
+        </div>
+        <p v-if="riegoCmdMsg" class="riego-cmd-ok">{{ riegoCmdMsg }}</p>
+        <p v-if="riegoCmdError" class="riego-cmd-err">{{ riegoCmdError }}</p>
       </article>
 
       <article class="card metric promo" v-if="resumen?.humedad?.promedio_1h != null">
@@ -227,12 +357,94 @@ onUnmounted(() => {
 
 <style scoped>
 .header {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: space-between;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 1.4fr) auto;
+  align-items: start;
   gap: 1rem;
   margin-bottom: 1.5rem;
+}
+
+.header-brand {
+  min-width: 0;
+}
+
+.header-weather {
+  padding: 0.85rem 1rem;
+  margin: 0;
+}
+
+.weather-top {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.weather-city {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--blue);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.weather-badge {
+  font-size: 0.7rem;
+  font-weight: 600;
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+}
+
+.weather-badge.riego-ok {
+  background: rgba(61, 214, 140, 0.15);
+  color: var(--green);
+  border: 1px solid var(--green-dim);
+}
+
+.weather-badge.riego-hold {
+  background: rgba(79, 195, 247, 0.12);
+  color: var(--water);
+  border: 1px solid rgba(79, 195, 247, 0.35);
+}
+
+.weather-stats {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.weather-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+
+.weather-stat strong {
+  font-size: 1.1rem;
+  color: var(--text);
+  line-height: 1.1;
+}
+
+.weather-stat small {
+  font-size: 0.7rem;
+  color: var(--muted);
+  text-transform: uppercase;
+}
+
+.weather-desc {
+  margin: 0.5rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+  text-transform: capitalize;
+}
+
+.weather-unavailable {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+  text-align: center;
 }
 
 .header-right {
@@ -408,6 +620,72 @@ h1 {
   color: var(--muted);
 }
 
+.riego-controls {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 0.85rem;
+  flex-wrap: wrap;
+}
+
+.btn-riego {
+  flex: 1;
+  min-width: 7rem;
+  padding: 0.45rem 0.65rem;
+  border: none;
+  border-radius: 6px;
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.2s, transform 0.15s;
+}
+
+.btn-riego:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn-riego:not(:disabled):hover {
+  transform: translateY(-1px);
+}
+
+.btn-riego-on {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+}
+
+.btn-riego-off {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+  border: 1px solid #ef4444;
+}
+
+.riego-cmd-ok,
+.riego-cmd-err {
+  margin: 0.5rem 0 0;
+  font-size: 0.75rem;
+}
+
+.riego-cmd-ok {
+  color: var(--green);
+}
+
+.riego-cmd-err {
+  color: var(--red);
+}
+
+.mqtt-hint {
+  display: block;
+  margin-top: 0.35rem;
+}
+
+.mqtt-hint.mqtt-ok {
+  color: var(--green);
+}
+
+.mqtt-hint.mqtt-err {
+  color: var(--amber);
+}
+
 .bar-track {
   position: relative;
   height: 6px;
@@ -482,10 +760,9 @@ h1 {
 }
 
 /* Responsive */
-@media (max-width: 768px) {
+@media (max-width: 900px) {
   .header {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: 1fr;
   }
 
   .header-right {

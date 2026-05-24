@@ -1,7 +1,12 @@
+import logging
+from typing import Generator, Optional
+
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, create_engine, Index
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from datetime import datetime, timezone
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -72,18 +77,53 @@ class PronosticoClimaDB(Base):
     actualizado = Column(DateTime(timezone=True), default=utcnow)
 
 
-# Configuracion de conexion a BD
-DATABASE_URL = settings.sqlalchemy_database_url or "sqlite:///dummy.db"
-
-if DATABASE_URL and DATABASE_URL.startswith("sqlite"):
-    pass  # SQLite local
-
+# Configuracion de conexion a BD (Supabase / PostgreSQL)
 engine = None
 SessionLocal = None
 
 
-def get_db():
-    """Dependencia para obtener sesión de BD"""
+def _setup_database() -> None:
+    global engine, SessionLocal
+    url = settings.supabase_db_url
+    if not url:
+        logger.warning(
+            "SUPABASE_DB_URL no configurada — historial de riego/config en PostgreSQL deshabilitado"
+        )
+        return
+    try:
+        engine = create_engine(url, pool_pre_ping=True)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        logger.info("Pool PostgreSQL inicializado (Supabase)")
+    except Exception as e:
+        logger.error("Error inicializando PostgreSQL: %s", e)
+        engine = None
+        SessionLocal = None
+
+
+_setup_database()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """Dependencia FastAPI: sesión obligatoria (falla si no hay PostgreSQL)."""
+    if SessionLocal is None:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PostgreSQL no disponible. Configure SUPABASE_DB_URL.",
+        )
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_db_optional() -> Generator[Optional[Session], None, None]:
+    """Sesión opcional: None si PostgreSQL no está configurado o falló al iniciar."""
+    if SessionLocal is None:
+        yield None
+        return
     db = SessionLocal()
     try:
         yield db

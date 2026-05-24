@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     mqtt_username: Optional[str] = None
     mqtt_password: Optional[str] = None
     mqtt_topic_subscribe: str = "esp8266/pub"
-    mqtt_topic_publish: str = "esp8226/sub"
+    mqtt_topic_publish: str = "esp8266/sub"
     mqtt_client_id: str = "riego-backend-1"
     mqtt_keepalive: int = 60
 

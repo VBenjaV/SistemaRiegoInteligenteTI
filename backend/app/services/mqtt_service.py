@@ -133,6 +133,35 @@ class MQTTClient:
         except Exception as e:
             logger.error("Error desconectando MQTT: %s", e)
 
+    def publish_raw(self, message: str) -> bool:
+        """Publicar mensaje de texto plano en el topic de comandos (ej. regar, detener)."""
+        if not self.client.is_connected():
+            logger.error(
+                "MQTT no conectado; no se publicó '%s' en %s",
+                message,
+                settings.mqtt_topic_publish,
+            )
+            return False
+        try:
+            result = self.client.publish(
+                settings.mqtt_topic_publish,
+                message,
+                qos=1,
+            )
+            if result.rc != mqtt.MQTT_ERR_SUCCESS:
+                logger.error("Error publicando mensaje MQTT: %s", result.rc)
+                return False
+            result.wait_for_publish(timeout=5.0)
+            logger.info(
+                "Mensaje publicado en %s: %s",
+                settings.mqtt_topic_publish,
+                message,
+            )
+            return True
+        except Exception as e:
+            logger.error("Error al publicar mensaje MQTT: %s", e)
+            return False
+
     def publish_command(self, accion: str, duracion_segundos: int = 0) -> bool:
         """Publicar comando de riego en ESP8266/sub."""
         try:

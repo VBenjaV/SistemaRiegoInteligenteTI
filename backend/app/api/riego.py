@@ -18,8 +18,29 @@ from app.services.database_service import (
 )
 from app.services.mongo_sensor_service import MongoSensorService
 from app.services.irrigation_logic import IrrigationLogic
+from app.services.mqtt_service import get_mqtt_client
 
 router = APIRouter(prefix="/api/riego", tags=["Riego"])
+
+
+def _publicar_comando_texto(mensaje: str) -> RespuestaControl:
+    """Publica un mensaje de texto en el topic MQTT de comandos (esp8266/sub)."""
+    client = get_mqtt_client()
+    if not client.is_connected():
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="MQTT no conectado. Verifica AWS IoT Core y certificados.",
+        )
+    if client.publish_raw(mensaje):
+        return RespuestaControl(
+            exito=True,
+            mensaje=f"Comando '{mensaje}' enviado al dispositivo",
+            evento_id=None,
+        )
+    raise HTTPException(
+        status_code=status.HTTP_502_BAD_GATEWAY,
+        detail=f"No se pudo publicar el comando '{mensaje}' en MQTT",
+    )
 
 
 @router.get(
@@ -110,6 +131,28 @@ async def evaluar_riego(
     logic = IrrigationLogic(db, dispositivo_id)
     resultado = logic.evaluar_y_actuar()
     return resultado
+
+
+@router.post(
+    "/manual/iniciar",
+    response_model=RespuestaControl,
+    summary="Iniciar riego manual (MQTT)",
+    description="Publica el mensaje de texto «regar» en el topic de comandos del ESP",
+)
+async def manual_iniciar_riego():
+    """Activar riego publicando «regar» en el topic suscrito por el dispositivo."""
+    return _publicar_comando_texto("regar")
+
+
+@router.post(
+    "/manual/detener",
+    response_model=RespuestaControl,
+    summary="Detener riego manual (MQTT)",
+    description="Publica el mensaje de texto «detener» en el topic de comandos del ESP",
+)
+async def manual_detener_riego():
+    """Detener riego publicando «detener» en el topic suscrito por el dispositivo."""
+    return _publicar_comando_texto("detener")
 
 
 @router.post(

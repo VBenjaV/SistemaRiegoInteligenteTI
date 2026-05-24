@@ -2,7 +2,8 @@
 from fastapi import APIRouter, Depends, Query
 from datetime import datetime
 from sqlalchemy.orm import Session
-from app.db.database import get_db
+from typing import Optional
+from app.db.database import get_db_optional
 from app.config import settings
 from app.models import DashboardActual
 from app.services.database_service import (
@@ -23,7 +24,7 @@ router = APIRouter(prefix="/api/dashboard", tags=["Dashboard"])
 )
 async def obtener_dashboard(
     dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
-    db: Session = Depends(get_db)
+    db: Optional[Session] = Depends(get_db_optional),
 ):
     """Obtener datos para dashboard"""
     device = dispositivo_id or settings.dispositivo_default_id
@@ -31,17 +32,17 @@ async def obtener_dashboard(
     ultima_lectura = MongoSensorService.obtener_ultima_lectura(device)
 
     umbral = settings.humidity_threshold_percent
-    try:
-        config = ConfiguracionService.obtener_configuracion(db, device)
-        umbral = config.umbral_humedad
-    except Exception:
-        pass
-
     ultimo_evento = None
-    try:
-        ultimo_evento = RiegoService.obtener_ultimo_evento(db, device)
-    except Exception:
-        pass
+    if db is not None:
+        try:
+            config = ConfiguracionService.obtener_configuracion(db, device)
+            umbral = config.umbral_humedad
+        except Exception:
+            pass
+        try:
+            ultimo_evento = RiegoService.obtener_ultimo_evento(db, device)
+        except Exception:
+            pass
     
     riego_activo = False
     duracion_restante = None
@@ -93,7 +94,7 @@ async def obtener_dashboard(
 )
 async def obtener_resumen(
     dispositivo_id: str = Query(default=None, description="ID del dispositivo"),
-    db: Session = Depends(get_db)
+    db: Optional[Session] = Depends(get_db_optional),
 ):
     """Obtener resumen rápido"""
     device = dispositivo_id or settings.dispositivo_default_id
@@ -102,19 +103,23 @@ async def obtener_resumen(
     promedio = MongoSensorService.obtener_promedio_humedad(device, minutos=60)
 
     umbral = settings.humidity_threshold_percent
-    try:
-        config = ConfiguracionService.obtener_configuracion(db, device)
-        umbral = config.umbral_humedad
-    except Exception:
-        pass
-
     ultimo_evento = None
     tiempo_riego_hoy = 0
-    try:
-        ultimo_evento = RiegoService.obtener_ultimo_evento(db, device)
-        tiempo_riego_hoy = RiegoService.obtener_tiempo_riego_total_hoy(db, device)
-    except Exception:
-        pass
+    riego_activo = False
+
+    if db is not None:
+        try:
+            config = ConfiguracionService.obtener_configuracion(db, device)
+            umbral = config.umbral_humedad
+        except Exception:
+            pass
+        try:
+            ultimo_evento = RiegoService.obtener_ultimo_evento(db, device)
+            tiempo_riego_hoy = RiegoService.obtener_tiempo_riego_total_hoy(db, device)
+            if ultimo_evento and ultimo_evento.accion == "ON":
+                riego_activo = True
+        except Exception:
+            pass
 
     return {
         "dispositivo_id": device,
@@ -124,7 +129,7 @@ async def obtener_resumen(
             "umbral": umbral,
         },
         "riego": {
-            "activo": ultimo_evento.accion == "ON" if ultimo_evento else False,
+            "activo": riego_activo,
             "ultimo_evento": ultimo_evento.accion if ultimo_evento else None,
             "tiempo_total_hoy_min": round(tiempo_riego_hoy / 60, 2),
         },

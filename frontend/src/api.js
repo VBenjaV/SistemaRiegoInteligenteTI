@@ -62,3 +62,27 @@ export function fetchHistorial(dispositivoId = 'esp8266', limit = 30) {
 export function fetchHealth() {
   return request('/health')
 }
+
+export function fetchClimaPronostico(ciudad) {
+  const q = ciudad ? `?ciudad=${encodeURIComponent(ciudad)}` : ''
+  return request(`/api/clima/pronostico${q}`)
+}
+
+// ====== CONTROL MANUAL MQTT ======
+export function fetchMqttStatus() {
+  return request('/api/debug/mqtt')
+}
+
+export function iniciarRiegoManual() {
+  return request('/api/riego/manual/iniciar', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
+
+export function detenerRiegoManual() {
+  return request('/api/riego/manual/detener', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  })
+}
