@@ -1,19 +1,28 @@
-version: '3.8'
+# Sistema de Riego Inteligente — stack completo
+#
+# Antes del primer arranque:
+#   1. cp backend/.env.example backend/.env   (y completar SUPABASE_*, WEATHER_API_KEY, AWS_IOT_ENDPOINT)
+#   2. Colocar certificados AWS IoT en ./IotCore/ (AmazonRootCA1.pem + device cert/key)
+#
+# Uso: docker compose up -d --build
+# Dashboard: http://localhost:5173  |  API: http://localhost:8000/docs
 
 services:
-  mosquitto:
-    image: eclipse-mosquitto:latest
-    container_name: riego_mosquitto
+  mongodb:
+    image: mongo:7
+    container_name: riego_mongodb
     ports:
-      - "1883:1883"
-      - "9001:9001"
+      - "27017:27017"
     volumes:
-      - ./mosquitto/config:/mosquitto/config
-      - ./mosquitto/data:/mosquitto/data
-      - ./mosquitto/log:/mosquitto/log
-    command: mosquitto -c /mosquitto/config/mosquitto.conf
+      - mongodb_data:/data/db
     environment:
-      - TZ=America/Mexico_City
+      TZ: America/Mexico_City
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     restart: unless-stopped
     networks:
       - riego_network
@@ -26,24 +35,68 @@ services:
     ports:
       - "8000:8000"
     env_file:
-      - ./backend/.env
+      - path: ./backend/.env
+        required: false
     environment:
-      - DEBUG=False
-      - MQTT_BROKER_HOST=mosquitto
-      - MQTT_BROKER_PORT=1883
+      # Overrides para red Docker (tienen prioridad sobre backend/.env)
+      MONGODB_URL: mongodb://mongodb:27017
+      MONGODB_DATABASE: riego_inteligente
+      MQTT_CA_PATH: /app/certs/AmazonRootCA1.pem
+      MQTT_CERT_PATH: /app/certs/4bb52c4252bfb1b205ea09eb59a655000d689f05c3b72aa689f775caa548496e-certificate.pem.crt
+      MQTT_KEY_PATH: /app/certs/4bb52c4252bfb1b205ea09eb59a655000d689f05c3b72aa689f775caa548496e-private.pem.key
+      MQTT_TOPIC_SUBSCRIBE: esp8266/pub
+      MQTT_TOPIC_PUBLISH: esp8266/sub
+      API_HOST: 0.0.0.0
+      API_PORT: "8000"
     volumes:
-      - ./backend:/app
+      # Si ./IotCore no existe, créalo y copia los certificados del dispositivo IoT
+      - ./IotCore:/app/certs:ro
     depends_on:
-      - mosquitto
+      mongodb:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
     networks:
       - riego_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        VITE_API_BASE: ""
+    container_name: riego_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1/health"]
+      interval: 15s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
     restart: unless-stopped
+    networks:
+      - riego_network
 
 networks:
   riego_network:
+    name: riego_network
     driver: bridge
 
 volumes:
-  mosquitto_config:
-  mosquitto_data:
-  mosquitto_log:
+  mongodb_data:
+    name: riego_mongodb_data

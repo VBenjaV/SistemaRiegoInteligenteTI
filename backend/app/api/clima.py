@@ -18,7 +18,6 @@ router = APIRouter(prefix="/api/clima", tags=["Clima"])
 )
 async def obtener_pronostico(
     ciudad: str = Query(settings.weather_city, description="Nombre de la ciudad"),
-    db: Session = Depends(get_db)
 ):
     """Obtener pronóstico meteorológico"""
     weather_service = get_weather_service()

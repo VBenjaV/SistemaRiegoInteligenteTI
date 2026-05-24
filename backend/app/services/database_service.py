@@ -1,6 +1,9 @@
 import logging
 from datetime import datetime, timezone
+from types import SimpleNamespace
 from typing import Optional
+
+from app.config import settings
 from sqlalchemy.orm import Session
 from app.db.database import (
     LecturaSensorDB,
@@ -172,13 +175,17 @@ class ConfiguracionService:
         ).first()
         
         if not config:
-            # Crear configuración por defecto
-            config = ConfiguracionDB(dispositivo_id=dispositivo_id)
-            db.add(config)
-            db.commit()
-            db.refresh(config)
-            logger.info(f"Configuración por defecto creada para {dispositivo_id}")
-        
+            logger.info("Configuración por defecto en memoria para %s", dispositivo_id)
+            return SimpleNamespace(
+                dispositivo_id=dispositivo_id,
+                umbral_humedad=settings.humidity_threshold_percent,
+                intervalo_lectura_min=settings.sensor_read_interval_minutes,
+                lluvia_minima_mm=settings.weather_rain_threshold_mm,
+                horas_pronostico=settings.weather_forecast_hours,
+                actualizado=datetime.now(timezone.utc),
+                creado=datetime.now(timezone.utc),
+            )
+
         return config
 
     @staticmethod

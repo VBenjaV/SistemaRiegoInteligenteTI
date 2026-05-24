@@ -1,0 +1,36 @@
+:root {
+  --bg: #0f1419;
+  --surface: #1a2332;
+  --surface2: #243044;
+  --border: #2d3f56;
+  --text: #e8edf4;
+  --muted: #8b9cb3;
+  --green: #3dd68c;
+  --green-dim: #2a9d63;
+  --amber: #f5b942;
+  --red: #f07178;
+  --blue: #6cb6ff;
+  --water: #4fc3f7;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: 'DM Sans', system-ui, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  min-height: 100vh;
+  background-image:
+    radial-gradient(ellipse 80% 50% at 50% -20%, rgba(61, 214, 140, 0.12), transparent),
+    radial-gradient(ellipse 60% 40% at 100% 100%, rgba(79, 195, 247, 0.08), transparent);
+}
+
+#app {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: 1.5rem;
+}

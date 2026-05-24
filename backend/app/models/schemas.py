@@ -1,6 +1,6 @@
 from pydantic import BaseModel, Field
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Union
 from enum import Enum
 
 
@@ -17,7 +17,7 @@ class RiegoAccion(str, Enum):
 class LecturaSensorBase(BaseModel):
     """Base para lecturas de sensores"""
     humedad: float = Field(..., ge=0, le=100, description="Porcentaje de humedad del suelo")
-    dispositivo_id: str = Field(default="sensor1", description="ID del sensor")
+    dispositivo_id: str = Field(default="esp8266", description="ID del sensor")
 
 
 class LecturaSensorCreate(LecturaSensorBase):
@@ -28,10 +28,11 @@ class LecturaSensorCreate(LecturaSensorBase):
 
 class LecturaSensor(LecturaSensorBase):
     """Lectura de sensor con metadata"""
-    id: int
+    id: Union[int, str]
     temperatura: Optional[float] = None
     timestamp: datetime
     creado: datetime
+    topic: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -114,7 +115,6 @@ class ConfiguracionCreate(ConfiguracionBase):
 
 class Configuracion(ConfiguracionBase):
     """Configuración completa"""
-    id: int
     dispositivo_id: str
     actualizado: datetime
     creado: datetime

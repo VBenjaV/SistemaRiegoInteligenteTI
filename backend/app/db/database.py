@@ -1,7 +1,12 @@
+import logging
+from typing import Generator, Optional
+
 from sqlalchemy import Column, Integer, String, Float, DateTime, Boolean, create_engine, Index
-from sqlalchemy.orm import declarative_base, sessionmaker
+from sqlalchemy.orm import declarative_base, sessionmaker, Session
 from datetime import datetime, timezone
 from app.config import settings
+
+logger = logging.getLogger(__name__)
 
 Base = declarative_base()
 
@@ -42,11 +47,10 @@ class EventoRiegoDB(Base):
 
 
 class ConfiguracionDB(Base):
-    """Modelo de base de datos para configuración"""
+    """Modelo alineado con Supabase: dispositivo_id es PK."""
     __tablename__ = "configuracion"
 
-    id = Column(Integer, primary_key=True, index=True)
-    dispositivo_id = Column(String(50), unique=True, index=True, nullable=False)
+    dispositivo_id = Column(String(50), primary_key=True, index=True, nullable=False)
     umbral_humedad = Column(Integer, default=40)
     intervalo_lectura_min = Column(Integer, default=5)
     lluvia_minima_mm = Column(Float, default=5.0)
@@ -73,19 +77,53 @@ class PronosticoClimaDB(Base):
     actualizado = Column(DateTime(timezone=True), default=utcnow)
 
 
-# Configuracion de conexion a BD
-DATABASE_URL = settings.sqlalchemy_database_url
-
-if DATABASE_URL.startswith("sqlite"):
-    raise ValueError("SQLite no permitido; use SUPABASE_DB_URL")
-
-engine = create_engine(DATABASE_URL, echo=False)
-
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+# Configuracion de conexion a BD (Supabase / PostgreSQL)
+engine = None
+SessionLocal = None
 
 
-def get_db():
-    """Dependencia para obtener sesión de BD"""
+def _setup_database() -> None:
+    global engine, SessionLocal
+    url = settings.supabase_db_url
+    if not url:
+        logger.warning(
+            "SUPABASE_DB_URL no configurada — historial de riego/config en PostgreSQL deshabilitado"
+        )
+        return
+    try:
+        engine = create_engine(url, pool_pre_ping=True)
+        SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+        logger.info("Pool PostgreSQL inicializado (Supabase)")
+    except Exception as e:
+        logger.error("Error inicializando PostgreSQL: %s", e)
+        engine = None
+        SessionLocal = None
+
+
+_setup_database()
+
+
+def get_db() -> Generator[Session, None, None]:
+    """Dependencia FastAPI: sesión obligatoria (falla si no hay PostgreSQL)."""
+    if SessionLocal is None:
+        from fastapi import HTTPException, status
+
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+            detail="PostgreSQL no disponible. Configure SUPABASE_DB_URL.",
+        )
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
+
+
+def get_db_optional() -> Generator[Optional[Session], None, None]:
+    """Sesión opcional: None si PostgreSQL no está configurado o falló al iniciar."""
+    if SessionLocal is None:
+        yield None
+        return
     db = SessionLocal()
     try:
         yield db
