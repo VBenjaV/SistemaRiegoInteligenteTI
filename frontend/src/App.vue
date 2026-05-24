@@ -28,6 +28,8 @@ const lastUpdate = ref(null)
 const riegoCmdLoading = ref(false)
 const riegoCmdMsg = ref(null)
 const riegoCmdError = ref(null)
+/** Estado tras comando manual MQTT; null = usar datos del servidor */
+const riegoActivoManual = ref(null)
 const mqttOk = ref(false)
 const mqttTopicPublish = ref('')
 const clima = ref(null)
@@ -112,7 +114,27 @@ async function loadData() {
 const humedad = computed(() => dashboard.value?.humedad_actual ?? resumen.value?.humedad?.actual)
 const temperatura = computed(() => dashboard.value?.temperatura_actual)
 const umbral = computed(() => dashboard.value?.umbral_humedad ?? resumen.value?.humedad?.umbral ?? 40)
-const riegoActivo = computed(() => dashboard.value?.riego_activo ?? resumen.value?.riego?.activo ?? false)
+const riegoActivo = computed(() => {
+  if (riegoActivoManual.value !== null) return riegoActivoManual.value
+  return dashboard.value?.riego_activo ?? resumen.value?.riego?.activo ?? false
+})
+
+function aplicarEstadoRiego(activo) {
+  riegoActivoManual.value = activo
+  if (dashboard.value) {
+    dashboard.value = {
+      ...dashboard.value,
+      riego_activo: activo,
+      duracion_riego_restante: activo ? dashboard.value.duracion_riego_restante : null,
+    }
+  }
+  if (resumen.value?.riego) {
+    resumen.value = {
+      ...resumen.value,
+      riego: { ...resumen.value.riego, activo },
+    }
+  }
+}
 
 const climaActual = computed(() => clima.value?.clima_actual)
 const lluviaPronostico = computed(() => clima.value?.lluvia_pronostico)
@@ -159,6 +181,7 @@ function handleLoginSuccess() {
 function handleLogout() {
   logout()
   verificarAutenticacion()
+  riegoActivoManual.value = null
   if (timer) clearInterval(timer)
 }
 
@@ -173,6 +196,7 @@ async function enviarComandoRiego(accion) {
   try {
     const res =
       accion === 'iniciar' ? await iniciarRiegoManual() : await detenerRiegoManual()
+    aplicarEstadoRiego(accion === 'iniciar')
     const topic = mqttTopicPublish.value || 'esp8266/sub'
     const cmd = accion === 'iniciar' ? 'regar' : 'detener'
     riegoCmdMsg.value = res.mensaje || `«${cmd}» enviado a ${topic}`
@@ -306,7 +330,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="btn-riego btn-riego-on"
-            :disabled="riegoCmdLoading"
+            :disabled="riegoCmdLoading || riegoActivo"
             @click="enviarComandoRiego('iniciar')"
           >
             {{ riegoCmdLoading ? 'Enviando…' : 'Iniciar riego' }}
@@ -314,7 +338,7 @@ onUnmounted(() => {
           <button
             type="button"
             class="btn-riego btn-riego-off"
-            :disabled="riegoCmdLoading"
+            :disabled="riegoCmdLoading || !riegoActivo"
             @click="enviarComandoRiego('detener')"
           >
             Detener riego
@@ -350,7 +374,7 @@ onUnmounted(() => {
       <span v-if="lastUpdate">
         Actualizado: {{ lastUpdate.toLocaleTimeString('es') }} · cada {{ POLL_MS / 1000 }} s
       </span>
-      <a href="http://localhost:8000/docs" target="_blank" rel="noopener">API Docs</a>
+      <a href="/docs" target="_blank" rel="noopener">API Docs</a>
     </footer>
   </div>
 </template>
