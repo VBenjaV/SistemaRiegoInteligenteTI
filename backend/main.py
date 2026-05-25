@@ -3,7 +3,7 @@ import logging
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, Field
 
 from app.config import settings
 # from app.db.database import init_db  # No necesario para login simple
@@ -33,13 +33,40 @@ class LoginRequest(BaseModel):
 
 class RegisterRequest(BaseModel):
     email: EmailStr
-    password: str
+    password: str = Field(min_length=8, description="Mínimo 8 caracteres")
 
 
 class AuthResponse(BaseModel):
     access_token: str
     user_id: str
     email: str
+
+
+def _mensaje_error_auth(exc: Exception) -> str:
+    """Traduce errores de Supabase Auth a mensajes claros para el frontend."""
+    msg = getattr(exc, "message", None) or str(exc)
+    if hasattr(exc, "to_dict"):
+        try:
+            data = exc.to_dict()
+            msg = data.get("message") or data.get("msg") or msg
+        except Exception:
+            pass
+    lower = str(msg).lower()
+    if "already" in lower or "registered" in lower or "exists" in lower:
+        return "Este email ya está registrado"
+    if "password" in lower:
+        return f"Contraseña no válida: {msg}"
+    if "invalid" in lower and "email" in lower:
+        return "El correo electrónico no es válido"
+    if "signup" in lower and "disabled" in lower:
+        return "El registro está deshabilitado en Supabase (Authentication → Providers → Email)"
+    if "rate" in lower or "limit" in lower or "429" in lower:
+        return (
+            "Límite de envío de correos de Supabase alcanzado. "
+            "Espera 30–60 minutos, usa otro email o desactiva «Confirm email» "
+            "en Authentication → Providers → Email."
+        )
+    return str(msg)
 
 
 @asynccontextmanager
@@ -132,11 +159,6 @@ async def register(request: RegisterRequest):
             raise Exception("Error en el registro")
     except Exception as e:
         error_msg = str(e).lower()
-        if "already exists" in error_msg or "already registered" in error_msg:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Este email ya está registrado"
-            )
         if "invalid api key" in error_msg:
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -145,11 +167,14 @@ async def register(request: RegisterRequest):
                     "'anon' / 'publishable' (eyJ...), no la 'service_role' (sb_secret_...)."
                 ),
             )
-        logger.error(f"Error registrando usuario: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Error en el registro. Revisa email, contraseña (mín. 8) o configuración de Supabase.",
+        logger.error("Error registrando usuario: %s", e)
+        detail = _mensaje_error_auth(e)
+        status_code = (
+            status.HTTP_429_TOO_MANY_REQUESTS
+            if "rate" in str(e).lower() or "429" in str(e).lower()
+            else status.HTTP_400_BAD_REQUEST
         )
+        raise HTTPException(status_code=status_code, detail=detail)
 
 
 @app.post("/auth/login", response_model=AuthResponse, tags=["Auth"])

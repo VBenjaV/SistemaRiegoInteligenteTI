@@ -160,6 +160,13 @@ const success = ref(null)
 const isRegistering = ref(false)
 const showPassword = ref(false)
 
+function mensajeErrorApi(e, fallback) {
+  const d = e?.data?.detail
+  if (typeof d === 'string') return d
+  if (Array.isArray(d)) return d.map((x) => x.msg || String(x)).join('. ')
+  return fallback
+}
+
 async function handleLogin() {
   error.value = null
   loading.value = true
@@ -167,7 +174,7 @@ async function handleLogin() {
     await login(email.value, password.value)
     emit('login-success')
   } catch (e) {
-    error.value = 'Email o contraseña incorrectos'
+    error.value = mensajeErrorApi(e, 'Email o contraseña incorrectos')
   } finally {
     loading.value = false
   }
@@ -193,7 +200,7 @@ async function handleRegister() {
       success.value = null
     }, 2500)
   } catch (e) {
-    error.value = e.data?.detail || 'Error en el registro'
+    error.value = mensajeErrorApi(e, 'Error en el registro')
   } finally {
     loading.value = false
   }

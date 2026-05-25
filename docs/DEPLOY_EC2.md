@@ -195,9 +195,50 @@ cd SistemaRiegoInteligenteTI
 
 ---
 
-## 9. Supabase y red
+## 9. Supabase y registro de usuarios
 
-- **Auth (login/registro):** en el dashboard de Supabase → Authentication → URL Configuration, agrega la URL del sitio, por ejemplo `http://<IP_EC2>` o `https://riego.tudominio.com`.
+Si el registro devuelve **400 Bad Request**, revisa en [Supabase Dashboard](https://supabase.com/dashboard):
+
+1. **Authentication → Providers → Email**
+   - Email habilitado
+   - Si **Confirm email** está activo, tras registrarte debes confirmar el correo antes de iniciar sesión
+
+2. **Authentication → URL Configuration**
+
+   Supabase **no permite** URLs con palabras bloqueadas (`ec2`, `amazonaws`, `compute`, etc.).  
+   No uses: `http://ec2-xx-xx.compute.amazonaws.com` → dará *"Site URL contains blocked keywords"*.
+
+   **Opción A — IP pública (rápida)**  
+   - **Site URL:** `http://18.230.144.33` (solo la IP, sin hostname AWS)  
+   - **Redirect URLs:** `http://18.230.144.33:5173/**` y/o `http://18.230.144.33/**`
+
+   **Opción B — Dominio propio (recomendada)**  
+   - Registra un dominio y apunta un registro **A** a la IP de la EC2.  
+   - **Site URL:** `http://riego.tudominio.com`  
+   - **Redirect URLs:** `http://riego.tudominio.com/**`
+
+   **Opción C — Solo desarrollo / sin confirmación por email**  
+   - **Site URL:** `http://localhost:5173`  
+   - Desactiva **Confirm email** en Providers → Email (ver abajo).
+
+3. **`backend/.env` en el servidor**
+   - `SUPABASE_URL` = URL del proyecto (`https://xxxxx.supabase.co`)
+   - `SUPABASE_KEY` = clave **anon** / publishable (`eyJ...`), **no** `service_role`
+
+4. **429 email rate limit exceeded** (logs de Supabase en `/signup`):
+   - Supabase limita cuántos correos de confirmación envía por hora (plan gratuito: pocos por hora).
+   - **Solución rápida:** Authentication → Providers → Email → desactivar **Confirm email**.
+   - O esperar 30–60 minutos antes de volver a registrar el mismo correo.
+   - El usuario `doriacat4@gmail.com` puede ya existir: prueba **Iniciar sesión** o confirma el correo si llegó el link.
+
+5. Causas habituales del 400:
+   - Email ya registrado → inicia sesión o usa otro correo
+   - Contraseña menor a 8 caracteres o sin cumplir política de Supabase
+   - Registro deshabilitado en Providers
+
+Tras cambiar `.env` en EC2: `docker compose up -d --force-recreate backend`
+
+- **Auth (login/registro):** la Site URL debe coincidir con la URL del navegador (`http://<IP_EC2>` o `:5173`).
 - **Base de datos:** Supabase ya está en la nube; la EC2 solo necesita salida a Internet (puerto 5432 al pooler).
 - **AWS IoT:** la policy del certificado del backend debe permitir `subscribe`/`publish` en los topics configurados.
 
